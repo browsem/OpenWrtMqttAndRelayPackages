@@ -1,11 +1,6 @@
 #!/bin/sh
 
-RootDir=$PWD
-#echo $RootDir
-packagename='cRelayMqttWrapperService'
-version=0.8
-basedir="${RootDir}/${packagename}.ipk/"
-#echo $basedir
+BuildPack(){
 
 cd $basedir/
 TmpDir="${basedir}TmpDir"
@@ -20,17 +15,17 @@ cd $basedir/data
 #echo tar -vczf $TmpDir/data.tar.gz ./*
 tar -czf $TmpDir/data.tar.gz ./*
 
-packagenameComp="${packagename}.${version}.all.ipk"
+
 #echo $packagenameComp
 echo "2.0" > $TmpDir/debian-binary
 cd $TmpDir
 tar -czf $RootDir/$packagenameComp ./*
 
 rm -rf $TmpDir
-exit 1
+echo "finished building ${packagename} ipk"
+}
 
-
-
+notToBeUsed(){
 #!/bin/sh
 
 basedir='/opt/root/helloworld-package'
@@ -56,4 +51,21 @@ tar -czf ../../$packagename ./*
 cd ..
 rm -rf tmp
 
-echo "finished building ipk"
+echo "finished building ${packagename} ipk"
+
+}
+
+
+
+RootDir=$PWD
+packagename='cRelayMqttWrapperService'
+version=0.8
+packagenameComp="${packagename}.${version}.all.ipk"
+
+basedir="${RootDir}/${packagename}.ipk/"
+echo "building ${packagenameComp}" 
+echo "in folder"
+echo "${basedir}"
+BuildPack
+
+
