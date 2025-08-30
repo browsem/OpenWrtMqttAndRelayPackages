@@ -8,7 +8,7 @@ I  created a cRelay simulator, as i didnt have the hardware on my devel machine.
 
 The goal of it, is to create a wifi connected heat control system, using
 Tasmota on an Esp32 on one end, and my wifi router on the other,
-Using Mqtt to tie it together and lua as the main scripting language
+Using Mqtt to tie it together and lua as the main scripting language. the reason for using lua is that its native to openwrt, and aubo robots use it as well, and i need to learn.
 
 Steps
 1: Get crelay wrapped into mqtt
@@ -23,3 +23,4 @@ Status: not started
 Status: nice to have
 6: Throw the shit away, and use a real plc instead.
 Status: nice to have
+
