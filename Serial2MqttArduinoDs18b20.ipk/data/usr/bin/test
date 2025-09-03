@@ -1,0 +1,29 @@
+#!/usr/bin/env lua
+
+local function TblCount(tbl)
+	local count = 0
+	for _ in pairs(tbl) do
+		count = count + 1
+	end
+	return count
+end
+
+local data = {
+    [101] = "apple",
+    [102] = "banana"
+}
+
+local function upsert(tbl, id, value)
+    tbl[id] = value
+end
+
+-- Usage
+upsert(data, 102, "blueberry")  -- Overwrites existing
+upsert(data, 103, "cherry")     -- Adds new
+
+-- Print results
+for id, value in pairs(data) do
+    print(id, value)
+end
+
+print (TblCount(data))

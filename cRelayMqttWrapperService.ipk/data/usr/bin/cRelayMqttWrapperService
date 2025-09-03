@@ -7,6 +7,7 @@ local time = require 'eco.time'
 
 package.path = package.path ..";/usr/lib/lua/?.lua"
 local json = require "dkjson"
+local brfUtils = require "brfUtils"
 
 -- Function to read file contents
 local function read_file(path)
@@ -67,12 +68,12 @@ local function readnPublishRelayStates(client,RelayNum)
 	handle:close()			
 	--print (result)		
 	-- Parse the output into a Lua table
+	
+	local relays = brfUtils.Mqttheader
 	local indentlevel = 1 
 	local indent = string.rep("  ", indentlevel)
-	local relays = '{\n' .. indent .. '"Relays":{\n'		
 	local idx = 0	
-	indentlevel = indentlevel +1
-	indent = string.rep("  ", indentlevel)
+	indentlevel = indentlevel +1	
 	for line in result:gmatch("[^\r\n]+") do		
 		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
 		if relay and state then
@@ -82,15 +83,14 @@ local function readnPublishRelayStates(client,RelayNum)
 			--print ('"' .. relay .. '"')
 			--print ('"' .. state .. '"')
 			--relays[relay] = state	
-			relays = relays .. indent .. '"'.. relay.. '":"'..state..'"'						
+			relays = relays .. brfUtils.Indent(indentlevel) .. '"'.. relay.. '":"'..state..'"'						
 			idx=idx+1
 		end		
 	end	
-	relays = relays .. indent .."\n"
+	relays = relays .. brfUtils.Indent(indentlevel) .."\n"
 	for idx = indentlevel,1,-1 do	
-		indentlevel = indentlevel -1
-		indent = string.rep("  ", indentlevel)
-		relays = relays .. indent .."}\n"
+		indentlevel = indentlevel -1		
+		relays = relays .. brfUtils.Indent(indentlevel) .."}\n"
 	end
 		
 	--print (relays)
@@ -98,26 +98,12 @@ local function readnPublishRelayStates(client,RelayNum)
 	-- Convert to JSON
 	--local result = json.encode({Relays = relays}, {indent = true})
 	local payload = relays
-	client:publish('stat/Local/Relay', payload, mqtt.QOS0)
+	client:publish('stat'..config.Topic_String , payload, mqtt.QOS0)
 	print('Published:', payload)			
 
 	
 	--print(result)
 
-
-
-
-
-
-		--for RelayNum = 1,4,1
-		--do								
---			local handle = io.popen("sh ".. relayPath .. RelayNum)			
---			local result = handle:read("*a")
---			handle:close()			
---			local payload = result
---			client:publish('stat/Local/Relay' .. RelayNum, payload, mqtt.QOS0)
---			print('Published:', payload)			
-		--end
 end
 
 -- Optional: set keepalive interval
@@ -132,18 +118,20 @@ client:on({
 	conack = function(ack, client)
 		print('Connected to broker:', ack.rc)		
 		readnPublishRelayStates(client,RelayNum)								
-		client:subscribe('cmnd/Local/Relay', mqtt.QOS0)
+		client:subscribe('cmnd'..config.Topic_String, mqtt.QOS0)
 	end,
 	
 	publish = function(pkt, client)
         print('Received message on topic:', pkt.topic)
+	
 		-- Extract number and command using pattern matching
 		print('Payload:', pkt.payload)
 		local number = pkt.payload:match("%d+")
 		local cmd = pkt.payload:match("on") or pkt.payload:match("off")
-		local handle = io.popen("sh ".. relayPath .. number .. " " .. cmd )		
-		print (relayPath .. number .. " " .. cmd )
-		
+		if cmd then
+			local handle = io.popen("sh ".. relayPath .. number .. " " .. cmd )		
+			print (relayPath .. number .. " " .. cmd )
+	    end
 		readnPublishRelayStates(client,number)				
 	end,
 --

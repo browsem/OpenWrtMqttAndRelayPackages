@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Stop and disable the service before files are removed
+/etc/init.d/Serial2MqttArduinoDs18b20 stop
+/etc/init.d/Serial2MqttArduinoDs18b20 disable
+
+
+CONFIG_PATH="/etc/Serial2MqttArduinoDs18b20.json"
+DEFAULT_CONFIG="/usr/share/Serial2MqttArduinoDs18b20/etc/Serial2MqttArduinoDs18b20.json"
+
+# Compare files using checksum
+if cmp -s "$CONFIG_PATH" "$DEFAULT_CONFIG"; then
+    echo "Removing default config file"
+    rm "$CONFIG_PATH"
+else
+    echo "config file is modified,"
+	echo "preserving ${CONFIG_PATH}"
+fi
+

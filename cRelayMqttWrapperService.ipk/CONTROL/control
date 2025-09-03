@@ -1,6 +1,6 @@
 Package: cRelayMqttWrapperService
 Version: 0.8
-Depends: crelay, lua, lua-eco, lua-eco-mqtt, dkjson
+Depends: crelay, lua, lua-eco, lua-eco-mqtt, lua-brfUtils, dkjson
 Section: utils
 Priority: optional
 Architecture: all

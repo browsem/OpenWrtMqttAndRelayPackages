@@ -56,16 +56,28 @@ echo "finished building ${packagename} ipk"
 }
 
 
-
 RootDir=$PWD
-packagename='cRelayMqttWrapperService'
-version=0.8
-packagenameComp="${packagename}.${version}.all.ipk"
-
-basedir="${RootDir}/${packagename}.ipk/"
-echo "building ${packagenameComp}" 
-echo "in folder"
-echo "${basedir}"
-BuildPack
+for i in $(seq 1 3); do	
+	if [ "$i" -eq 1 ]; then	
+		packagename='cRelayMqttWrapperService'
+		version=0.8
+	elif [ "$i" -eq 2 ]; then	
+		packagename='lua-brfUtils'
+		version=0.8
+	elif [ "$i" -eq 3 ]; then	
+		packagename='Serial2MqttArduinoDs18b20'
+		version=0.8	
+	else
+		exit 1
+	fi
+	packagenameComp="${packagename}.${version}.all.ipk"
+	
+	basedir="${RootDir}/${packagename}.ipk/"
+	echo "building ${packagenameComp}" 
+	echo "in folder"
+	echo "${basedir}"
+	BuildPack
+	cd $RootDir
+done
 
 

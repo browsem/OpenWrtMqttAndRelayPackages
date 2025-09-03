@@ -5,6 +5,7 @@
   "port": 1883,
   "username": "Enter your username",
   "password": "Enter your password",
+  "Topic_String":"/Local/POWER",
   "Sim_Comment1": "0: Run the real cRelay",
   "Sim_Comment2": "1: else run my VERY simple simulator",
   "Simulated": 0
