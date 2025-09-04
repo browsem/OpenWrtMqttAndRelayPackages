@@ -1,5 +1,5 @@
-#!/bin/bash
+#!/bin/sh
 echo "Pulling latest changes from GitHub..."
-git pull origin main
+git pull origin master
 echo "Done!"
 
