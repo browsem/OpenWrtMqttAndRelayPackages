@@ -5,12 +5,13 @@ Functions included
 AddToTableByIdx
 DS18B20ID
 ExecuteToPID
+FileExist
 Indent
 MqttHeader
 PrintTable
 TblCount
 Timestamp
-
+WaitForEnterKey
 ]]
 function M.AddToTableByIdx(tbl, idx, value)
 	tbl[idx] = value
@@ -46,13 +47,25 @@ function M.DS18B20ID(numberOfSensors,Seed)
 end
 
 function M.ExecuteToPID(cmd,PathToPidFile)
+	local cmdEx = ""
 	if PathToPidFile then
 		cmdEx = "sh -c '".. cmd .." & echo $! > "  .. pidfile .. "'"
 	else
 		cmdEx = cmd
-	endif
+	end
 	os.execute(cmdEx)
 end
+
+function M.FileExist(path)
+  local f = io.open(path, "r")
+  if f then
+    f:close()
+    return true
+  else
+    return false
+  end
+end
+
 
 function M.Indent(indentlevel,Chars)
 	--Set the defaults
@@ -64,7 +77,7 @@ end
 
 function M.MqttHeader()
 	--Format output as json for mqtt
-	Output = "{\n"
+	local Output = "{\n"
 	Output = Output ..M.Indent(1)..'"Time": "' ..  M.Timestamp() ..'",\n'	
 	return Output
 end
@@ -90,7 +103,14 @@ function M.Timestamp()
 	return timestamp
 end
 
-
-
+function M.WaitForEnterKey(WaitTxt,ContinueTxt)
+	--Set default text strings
+	WaitTxt=WaitTxt or "Press Enter to continue..."
+	ContinueTxt=ContinueTxt or "Continuing program..."
+	
+	print(WaitTxt)
+	io.read()
+	print(ContinueTxt)
+end
 
 return M

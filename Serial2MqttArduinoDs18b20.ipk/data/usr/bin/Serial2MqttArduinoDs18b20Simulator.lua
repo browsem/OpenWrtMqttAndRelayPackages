@@ -218,7 +218,7 @@ function ShapeAndSendData(client,jdx)
 		elseif jdx==Mqtt then 
 			--now we close the json string
 			Output=Output.."}"
-			print ("mqtt Output: " .. Output)
+			--print ("mqtt Output: " .. Output)
 			client:publish('stat'.. config.sim_data[Mqtt].Topic_String , Output, mqtt.QOS0)
 		end	
 	

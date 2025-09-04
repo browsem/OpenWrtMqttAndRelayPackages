@@ -69,7 +69,7 @@ local function readnPublishTemperatures(client,verbose)
 		for num in string.gmatch(data, "%d+") do
 			table.insert(numbers, tonumber(num))
 		end
-	    AddToTableByIdx(sensors,numbers[1],numbers[2])
+	    brfUtils.AddToTableByIdx(sensors,numbers[1],numbers[2])
 		
 			--Add the sensor + value to sensors
 			--table.insert(sensors, {
@@ -77,7 +77,7 @@ local function readnPublishTemperatures(client,verbose)
 			--	value = numbers[2]
 			--})
 		data = serial:read("*line")  -- Reads until newline	
-		count=TblCount(sensors)
+		count=brfUtils.TblCount(sensors)
 		if count>=2 then
 			if time.now()<StartTime+config.PollTime then
 				timeout = true
@@ -197,6 +197,7 @@ client:on({
 
 --start the mqtt client, restart if it chrashes
 eco.run(function(name)		
+	print(1)
 	while true do 
 		client:run()
 		time.sleep(5)
@@ -205,6 +206,7 @@ end,'eco1')
 
 --resend every polltime sec
 eco.run(function(name)
+print(2)
 	while true do 
 		readnPublishTemperatures(client,false)		
 		--print("doof")

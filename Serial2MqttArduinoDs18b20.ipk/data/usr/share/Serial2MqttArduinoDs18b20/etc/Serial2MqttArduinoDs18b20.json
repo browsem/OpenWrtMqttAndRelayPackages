@@ -5,7 +5,7 @@
   "port": 1883,
   "username": "Enter your username",
   "password": "Enter your password",
-  "Topic_String":"/Local/SENSOR",
+  "Topic_String":"/LOCAL/SENSOR",
   "NumberOfSensors": 2,
   "PollTime": 60,
   "Serial_port_Comment":"Replace with your serial adress, preferably using /dev/serial/by-id",

@@ -69,10 +69,11 @@ local function readnPublishRelayStates(client,RelayNum)
 	--print (result)		
 	-- Parse the output into a Lua table
 	
-	local relays = brfUtils.Mqttheader
-	local indentlevel = 1 
-	local indent = string.rep("  ", indentlevel)
+	local relays = brfUtils.MqttHeader()
+	local indentlevel = 1 	
 	local idx = 0	
+	
+	relays = relays .. brfUtils.Indent(indentlevel) .. "{\n"
 	indentlevel = indentlevel +1	
 	for line in result:gmatch("[^\r\n]+") do		
 		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
@@ -80,10 +81,11 @@ local function readnPublishRelayStates(client,RelayNum)
 			if idx ~= 0 then			
 			relays = relays ..",\n"
 			end
+			--print (relays)
 			--print ('"' .. relay .. '"')
 			--print ('"' .. state .. '"')
 			--relays[relay] = state	
-			relays = relays .. brfUtils.Indent(indentlevel) .. '"'.. relay.. '":"'..state..'"'						
+			relays = relays .. brfUtils.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
 			idx=idx+1
 		end		
 	end	
@@ -93,13 +95,13 @@ local function readnPublishRelayStates(client,RelayNum)
 		relays = relays .. brfUtils.Indent(indentlevel) .."}\n"
 	end
 		
-	--print (relays)
+	print (relays)
 	
 	-- Convert to JSON
 	--local result = json.encode({Relays = relays}, {indent = true})
 	local payload = relays
 	client:publish('stat'..config.Topic_String , payload, mqtt.QOS0)
-	print('Published:', payload)			
+	print('Published:\n'.. payload)			
 
 	
 	--print(result)
