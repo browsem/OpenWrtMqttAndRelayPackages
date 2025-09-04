@@ -49,7 +49,7 @@ end
 function M.ExecuteToPID(cmd,PathToPidFile)
 	local cmdEx = ""
 	if PathToPidFile then
-		cmdEx = "sh -c '".. cmd .." & echo $! > "  .. pidfile .. "'"
+		cmdEx = "sh -c '".. cmd .." & echo $! > "  .. PathToPidFile .. "'"
 	else
 		cmdEx = cmd
 	end

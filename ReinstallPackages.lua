@@ -107,9 +107,22 @@ function is_package_installed(pkg_name)
   return false
 end
 
+function FileExist(path)
+  local f = io.open(path, "r")
+  if f then
+    f:close()
+    return true
+  else
+    return false
+  end
+end
+
+
 function PutFilesInlist(PkgList,SearchName)
 	if SearchName then
-		SearchName=SearchName .."*.all.ipk"
+		if not FileExist(SearchName) then
+			SearchName=SearchName .."*.all.ipk"
+		end
 	else
 		SearchName= "*.all.ipk"
 	end
