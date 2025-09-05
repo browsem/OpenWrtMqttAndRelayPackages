@@ -1,6 +1,6 @@
 Package: Serial2MqttArduinoDs18b20
 Version: 0.8
-Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-brfUtils, dkjson
+Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson, 
 Section: utils
 Priority: optional
 Architecture: all

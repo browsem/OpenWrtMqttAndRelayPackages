@@ -42,7 +42,17 @@ function PrintExHelp(FromNum)
 	os.exit(0)
 end
 
-function get_pkg_depends(ipk_path)
+local function get_pkg_depends_from_installed_ipkg(pkginfo)
+    -- Extract dependencies from the opkg info output
+    for line in pkginfo:gmatch("[^\r\n]+") do
+        if line:match("^Depends:") then
+            return line:match("^Depends:%s*(.+)")
+        end
+    end
+    return nil
+end
+
+function get_pkg_depends_from_IPK_file(ipk_path)
 	local cmd = 'tar -Oxzf "' .. ipk_path .. '" ./control.tar.gz | tar -xzO | grep "^Depends:"'
 	local handle = io.popen(cmd)
 	local result = handle:read("*l")
@@ -79,6 +89,7 @@ function match_files_glob(glob)
 end
 
 function opkg(cmd, file)
+ 
   local cmdex = "opkg ".. cmd .." " .. file
   if NotTesting then	 
 	local handle = io.popen(cmdex)
@@ -117,8 +128,34 @@ function FileExist(path)
   end
 end
 
+local function get_pkg_info(searchName)
+    local handle = io.popen("opkg info " .. searchName)
+    local output = handle:read("*a")
+    handle:close()	
+    if output == "" then return nil end	
+    local result = {}
+    for line in output:gmatch("[^\r\n]+") do
+        local key, value = line:match("^(%w+):%s*(.+)")
+        if key and value then
+			
+            result[key] = value
+        end
+    end
+	
 
-function PutFilesInlist(PkgList,SearchName)
+    return {
+        FileName = result["Filename"],
+        PkgName = result["Package"],
+        isInstalled = true, -- assuming it's installed if info is returned
+        depends = get_pkg_depends_from_installed_ipkg(output),
+        round = 1,
+		FileFound = false
+    }
+end
+
+
+function PutFilesInlist(PkgList,SearchName)	
+	local orgSearchName=SearchName
 	if SearchName then
 		if not FileExist(SearchName) then
 			SearchName=SearchName .."*.all.ipk"
@@ -135,10 +172,16 @@ function PutFilesInlist(PkgList,SearchName)
 		for _, f in ipairs(matches) do
 			--get the package name and dependencies and add them as well
 			local PkgName=get_pkg_name(f)
-			table.insert(PkgList,{FileName = f,PkgName=PkgName,isInstalled=is_package_installed(PkgName), depends=get_pkg_depends(f),round=1})							
+			table.insert(PkgList,{FileName = f,PkgName=PkgName,isInstalled=is_package_installed(PkgName), depends=get_pkg_depends_from_IPK_file(f), round=1, FileFound = true})							
 		end
 	else
-		print("❌ No matching files found.")			
+		--So no file was found, lets see if it was installed
+		if is_package_installed(orgSearchName) then
+			print("✅ Found package as installed:")			
+			table.insert(PkgList,get_pkg_info(orgSearchName))						
+		else
+			print("❌ No matching files found.")			
+		end
 	end		
 end
 
@@ -258,11 +301,11 @@ for idx = 1,maxlevel do
 	end
 end
 
+local opkgUpdated=false
 if Install then
 	if verbose then
 		print ()
-		print ("Now we reverse the tree, to install the packages again.")
-		
+		print ("Now we reverse the tree, to install the packages again.")		
 	end
 	for idx = maxlevel,1,-1 do
 		if verbose then 
@@ -272,8 +315,22 @@ if Install then
 		for i, pkgI in ipairs(PkgList) do
 			if pkgI.round==idx then
 				--Should be ready to install
-				opkg("install ",pkgI.FileName)		
-				print ("Package " .. pkgI.PkgName .. "is installed")
+				--if the package is present then				
+				if not FileExist(pkgI.FileName) then
+					print ("try to install from web")
+					if not opkgUpdated then
+						opkg("update ","")	
+						opkgUpdated=true
+					end
+					opkg("install ",pkgI.PkgName)	
+				else
+					opkg("install ",pkgI.FileName)	
+				end					
+				if NotTesting then
+					print ("Package " .. pkgI.PkgName .. "is installed")
+				else
+					print ("Package " .. pkgI.PkgName .. "is (test) installed")
+				end
 			end
 		end
 	end

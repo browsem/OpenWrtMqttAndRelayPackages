@@ -7,12 +7,22 @@ DS18B20ID
 ExecuteToPID
 FileExist
 Indent
+Load_config
 MqttHeader
+ReadFile
 PrintTable
+Script_path
+Sleep
 TblCount
 Timestamp
 WaitForEnterKey
 ]]
+
+
+
+package.path = package.path ..";/usr/lib/lua/?.lua"
+local json = require "dkjson"
+
 function M.AddToTableByIdx(tbl, idx, value)
 	tbl[idx] = value
 end
@@ -74,6 +84,16 @@ function M.Indent(indentlevel,Chars)
 	return string.rep(Chars, indentlevel)
 end
 
+-- Load and parse JSON config
+function M.Load_config(path)	
+    local content = M.Read_file(path)		
+    local config, pos, err = json.decode(content, 1, nil)
+	if err then
+        error("JSON decode error: " .. err)
+    end
+    return config
+end	
+
 
 function M.MqttHeader()
 	--Format output as json for mqtt
@@ -82,10 +102,35 @@ function M.MqttHeader()
 	return Output
 end
 
+-- Function to read file contents
+function M.Read_file(path)
+    local file = io.open(path, "r")
+    if not file then
+        error("Could not open file: " .. path)
+    end
+    local content = file:read("*a")	
+    file:close()	
+    return content
+end
+
+
 function M.PrintTable(tbl)
     for key, value in pairs(tbl) do
         print(key, value)
     end
+end
+
+function M.Script_path()  
+  --local script = arg[0]
+  local cwd = io.popen("pwd"):read("*l") -- for Unix-like systems
+  --print (cwd)
+  return cwd .."/"
+end
+
+
+function M.Sleep(seconds)
+  local start = os.clock()
+  while os.clock() - start < seconds do end
 end
 
 function M.TblCount(tbl)

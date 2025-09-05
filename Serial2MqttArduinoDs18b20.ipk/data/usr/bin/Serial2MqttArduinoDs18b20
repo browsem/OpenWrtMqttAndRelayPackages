@@ -2,47 +2,210 @@
 
 local mqtt = require 'eco.mqtt'
 local time = require 'eco.time'
+local termios = require("eco.termios")
+local file = require("eco.file")
 
 -- adding to path
+-- adding to path
 package.path = package.path ..";/usr/lib/lua/?.lua"
-local brfUtils =  require 'brfUtils'
-local json = require "dkjson"
+local brf =  require 'brfUtils'
 
-function script_path()  
-  --local script = arg[0]
-  local cwd = io.popen("pwd"):read("*l") -- for Unix-like systems
-  --print (cwd)
-  return cwd .."/"
+
+--Read config data from config file
+local config = brf.Load_config("/etc/Serial2MqttArduinoDs18b20.json")
+
+
+--INTERNALT "GLOBAL" VARAIABLES SECTION
+
+local serialPortPath=""
+local pts1 
+local pts2
+local clientConnected=false 
+
+--\INTERNALT "GLOBAL" VARAIABLES SECTION
+
+--functions section
+
+function verbose(level)	
+	return level<= config.verbose 
 end
 
--- Function to read file contents
-local function read_file(path)
-    local file = io.open(path, "r")
-    if not file then
-        error("Could not open file: " .. path)
-    end
-    local content = file:read("*a")	
-    file:close()	
-    return content
+function setSerial()
+	--configure the serial port
+	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
+	if verbose(2) then
+		print (SerSetCmd)
+	end
+	os.execute(SerSetCmd)
 end
 
+function readnPublishTemperatures(client)
+	print ("her")
+	--open for read/write
+	-- Write to serial, get all
+	local SerialPortAsFile = io.open(serialPortPath, "w")
+	local serialReq="all\n"
+	if verbose(2) then print("SerialCmd: "..serialReq) end
+	SerialPortAsFile:write(serialReq)
+	SerialPortAsFile:flush()
+	SerialPortAsFile:close()
 
--- Load and parse JSON config
-local function load_config(path)	
-    local content = read_file(path)		
-    local config, pos, err = json.decode(content, 1, nil)
-	if err then
-        error("JSON decode error: " .. err)
-    end
-    return config
+	local serial = io.open(serialPortPath, "r")			
+	-- Read one line (blocks until newline is received)
+	local done=false
+	local LinesRead = 0
+	StartTime = os.time()
+	
+	while not done do
+		local line = serial:read("*line")
+		if line then
+			LinesRead=LinesRead+1
+			if verbose(1) then 
+				-- Print the received line
+				print("Received:", line)
+			end
+		end
+		if LinesRead>= config.nr
+		if StartTime+2<os.time() then
+			done=true
+		end	
+	end
+	print("done")
+--handle serial answer
+
+end
+
+--\functions section
+
+
+--startup the simulation if wanted
+if config.sim_data.Simulated==1 then
+	if verbose(1) then print("Start the simulation") end	
+	--Use socat for the serial simulation, remember the settings and record the pid, so socat can be stopped with the service
+	local tmpfile = config.sim_data.tmpfile
+	local pidfile = "/var/run/socat_output.Serial2MqttArduinoDs18b20.pid"
+	local serialPortDefinition="pty,raw,echo=0,b".. config.Serial.baudRate .. " "
+	local cmd = "sh -c 'socat -d -d "..serialPortDefinition..serialPortDefinition .."> " .. tmpfile .. " 2>&1 & echo $! > " .. pidfile .. "'"
+	if verbose(5) then
+		print ("tmpfile: " .. tmpfile)
+		print ("pidfile: " .. pidfile )
+		print ("cmd: " .. cmd)
+	end
+	os.execute(cmd)
+	-- Wait briefly for socat to start and write output
+	time.sleep(5)
+	-- Read PID
+	local pidHandle = io.open(pidfile, "r")
+	local pid = pidHandle:read("*l")
+	pidHandle:close()
+	if verbose(2) then print ("socat PID ".. pid) end
+	-- Read the internal serial port paths from the temp file
+	local handle = io.open(tmpfile, "r")
+	local output = handle:read("*a")
+	handle:close()
+
+	-- Extract PTYs
+	pts1 = output:match("PTY is (/dev/pts/%d+)")
+	pts2 = output:match("PTY is /dev/pts/(%d+)", output:find(pts1) + 1)	
+
+	-- Set the serialport for this program
+	serialPortPath=pts1
+	if verbose(1) then
+		print("Created PTYs:")
+		print("  PTY1: " .. (pts1 or "not found"))
+		print("  PTY2: /dev/pts/" .. (pts2 or "not found"))
+		print ("starting sim with /dev/pts".. pts2)
+		
+	end
+	local SimCmd = brf.Script_path() .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
+	if verbose(2) then
+		print (SimCmd)
+	end
+	os.execute(SimCmd .."&")				
+else 
+	if verbose(1) then
+		print("using serial port from ".. config.Serial_port)
+	end
+	pts1=0
+	pts2=0
+	serialPortPath=config.Serial_port	
+	if verbose(1) then		
+		print ("starting serialport ".. serialPortPath)		
+	end
+	setSerial()
+	--configure the serial port
+	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
+	if verbose(2) then
+		print (SerSetCmd)
+	end
+	os.execute(SimCmd .."&")
+	
 end	
 
 
---read the config file
-local config = load_config("/etc/Serial2MqttArduinoDs18b20.json")
+
+-- Create MQTT client
+local client = mqtt.new({
+    ipaddr = config.ipaddr,      -- Replace with your broker IP
+    port = config.port,               -- Or 8883 for TLS
+	username = config.username,
+	password = config.password,
+    clean_session = true
+})
+
+-- Define MQTT event handlers
+
+client:on({	
+	conack = function(ack, client)
+		--This is what we do when first connected
+		if verbose(1) then print('Connected to broker:', ack.rc) end
+		if ack.rc == 0 then
+			clientConnected=true
+		end
+		--readnPublishTemperatures(client)	
+		--define what we want to subscribe to		
+		client:subscribe('cmnd'.. config.Topic_String, mqtt.QOS0)	
+		if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
+	end,
+	
+	publish  = function(pkt, client)
+	--this is what we do, when we recieve a meassage
+		if verbose(1) then print('Received message on topic:', pkt.topic) end
+		--return read and publish sensors
+		readnPublishTemperatures(client)
+		--print("food")
+	end,
+
+	error = function(err)
+		print('MQTT error:', err)
+	end
+})
+
+--start the mqtt client, restart if it chrashes
+eco.run(function(name)		
+	if verbose(1) then print("Starting task eco1") end
+	while true do 
+		client:run()
+		clientConnected=false
+		time.sleep(5)
+	end
+end,'eco1')
+
+--resend every polltime sec
+eco.run(function(name)
+	if verbose(1) then print("Starting task eco2") end
+	while true do 		
+		readnPublishTemperatures(client)				
+		time.sleep(config.PollTime)
+	end
+end,'eco2')
 
 
-local serialPortPath=""
+
+--[[
+
+
+
 
 
 --Function to send temperatures to mqtt
@@ -116,106 +279,16 @@ end
 
 
 
-if config.sim_data[2].Simulated==1 then
-	local tmpfile = config.sim_data[1].tmpfile
-	local pidfile = "/var/run/socat_output.Serial2MqttArduinoDs18b20.pid"
-	local cmd = "sh -c 'socat -d -d pty,raw,echo=0 pty,raw,echo=0 > " .. tmpfile .. " 2>&1 & echo $! > " .. pidfile .. "'"
-	os.execute(cmd)
-
-	-- Wait briefly for socat to start and write output
-	time.sleep(5)
-
-	-- Read PID
-	local pidHandle = io.open(pidfile, "r")
-	local pid = pidHandle:read("*l")
-	pidHandle:close()
-	print ("socat PID ".. pid)
-
-	-- Read PTY paths from the temp file
-	local handle = io.open(tmpfile, "r")
-	local output = handle:read("*a")
-	handle:close()
-
-	-- Extract PTYs
-	local pts1 = output:match("PTY is (/dev/pts/%d+)")
-	--pts2 = output:match("PTY is (/dev/pts/%d+)", output:find(pts1) + 1)
-	pts2 = output:match("PTY is /dev/pts/(%d+)", output:find(pts1) + 1)	
-
-	serialPortPath=pts1		
-	
-	print("Created PTYs:")
-	print("  PTY1: " .. (pts1 or "not found"))
-	print("  PTY2: /dev/pts/" .. (pts2 or "not found"))
-	print ("starting sim with ".. pts2)
-else 
-	pts2=0
-	serialPortPath=config.Serial_port
-end
-
---Start the simulation program	
-if config.sim_data[1].Simulated==1 or config.sim_data[2].Simulated==1  then
-	print ("simming: "..pts2)
-	local SimCmd = script_path() .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
-	os.execute(SimCmd .."&")		
-end
-
--- Create MQTT client
-local client = mqtt.new({
-    ipaddr = config.ipaddr,      -- Replace with your broker IP
-    port = config.port,               -- Or 8883 for TLS
-	username = config.username,
-	password = config.password,
-    clean_session = true
-})
-
-
--- Define MQTT event handlers
-
-client:on({	
-	conack = function(ack, client)
-		--This is what we do when first connected
-		print('Connected to broker:', ack.rc)		
-		--readnPublishTemperatures(client)	
-		--define what we want to subscribe to
-		
-		client:subscribe('cmnd'.. config.Topic_String, mqtt.QOS0)	
-		print ("subscribed to: "..'cmnd'.. config.Topic_String)
-	end,
-	
-	publish  = function(pkt, client)
-	--this is what we do, when we recieve a meassage
-		print('Received message on topic:', pkt.topic)
-		--return read and publish sensors
-		readnPublishTemperatures(client,false)
-		--print("food")
-	end,
-
-	error = function(err)
-		print('MQTT error:', err)
-	end
-})
-
---start the mqtt client, restart if it chrashes
-eco.run(function(name)		
-	print(1)
-	while true do 
-		client:run()
-		time.sleep(5)
-	end
-end,'eco1')
-
---resend every polltime sec
-eco.run(function(name)
-print(2)
-	while true do 
-		readnPublishTemperatures(client,false)		
-		--print("doof")
-		time.sleep(config.PollTime)
-	end
-end,'eco2')
 
 
 
---cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
---stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)
---tele/TOPIC/LWT	from middleware	Returns the status of the middleware (Online/Offline)
+
+
+--[[
+mqtt Topics 
+
+cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
+stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)
+tele/TOPIC/LWT	from middleware	Returns the status of the middleware (Online/Offline)
+
+]]--

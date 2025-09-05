@@ -8,13 +8,15 @@
   "Topic_String":"/LOCAL/SENSOR",
   "NumberOfSensors": 2,
   "PollTime": 60,
-  "Serial_port_Comment":"Replace with your serial adress, preferably using /dev/serial/by-id",
-  "Serial_port":"/dev/serial/by-id/someting",
-  
-  "sim_data":[
+  "Serial":{
+	"port_Comment":"Replace with your serial adress, preferably using /dev/serial/by-id",
+	"port":"/dev/serial/by-id/someting",
+	"BaudRate":9600,
+	"settings":"cs8 -cstopb -parenb"
+  },
+  "sim_data":
 		{	
 		"Data_comment":"Used for serial simulation",
-		"ConnectionType":"serial",
 		"tmpfile" : "/tmp/socat_output.Serial2MqttArduinoDs18b20.txt",
 		"temperature_Max":65,
 		"temperature_Min":45,
@@ -23,22 +25,9 @@
 		"Sim_Comment1": "0: Run against the real arduino",
 		"Sim_Comment2": "1: else run a simple socat simulator",
 		"Simulated":0,
-		"RandomSeed":5
-		},	
-		{
-		"Data_comment":"Used for mqtt simulation",
-		"ConnectionType":"mqtt",
-		"NumberOfSensors": 2,
-		"Topic_String":"/TERMOKANDE/SENSOR"
-		"temperature_Max":75,
-		"temperature_Min":55,
-		"temperature_Channel_Max_Deviation":5,
-		"temperature_from_zero_to_min_time":30,
-		"Sim_Comment1": "0: Run against the real arduino",
-		"Sim_Comment2": "1: else run a simple mqtt simulator",
-		"Simulated":0,
-		"RandomSeed":1
-		}
-	]
+		"RandomSensorIdSeed":5,
+		"verbose":0
+		},
+  "verbose":0
 }
 
