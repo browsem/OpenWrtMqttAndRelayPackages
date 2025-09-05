@@ -2,8 +2,10 @@
 
 local mqtt = require 'eco.mqtt'
 local time = require 'eco.time'
-local termios = require("eco.termios")
-local file = require("eco.file")
+local termios = require 'eco.termios'
+local file = require 'eco.file'
+local bufio = require 'eco.bufio'
+
 
 -- adding to path
 -- adding to path
@@ -17,6 +19,8 @@ local config = brf.Load_config("/etc/Serial2MqttArduinoDs18b20.json")
 
 --INTERNALT "GLOBAL" VARAIABLES SECTION
 
+
+
 local serialPortPath=""
 local pts1 
 local pts2
@@ -29,7 +33,7 @@ local clientConnected=false
 function verbose(level)	
 	return level<= config.verbose 
 end
-
+--[[
 function setSerial()
 	--configure the serial port
 	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
@@ -45,15 +49,19 @@ function readnPublishTemperatures(client)
 	-- Write to serial, get all
 	local SerialPortAsFile = io.open(serialPortPath, "w")
 	local serialReq="all\n"
-	if verbose(2) then print("SerialCmd: "..serialReq) end
+	if verbose(2) then 
+		print("writing to :".. serialPortPath)
+		print("SerialCmd: "..serialReq) 
+	end
 	SerialPortAsFile:write(serialReq)
 	SerialPortAsFile:flush()
 	SerialPortAsFile:close()
-
+	
 	local serial = io.open(serialPortPath, "r")			
 	-- Read one line (blocks until newline is received)
 	local done=false
 	local LinesRead = 0
+	
 	StartTime = os.time()
 	
 	while not done do
@@ -65,7 +73,9 @@ function readnPublishTemperatures(client)
 				print("Received:", line)
 			end
 		end
-		if LinesRead>= config.nr
+		if LinesRead>= config.NumberOfSensors then
+			done=true
+		end
 		if StartTime+2<os.time() then
 			done=true
 		end	
@@ -73,6 +83,89 @@ function readnPublishTemperatures(client)
 	print("done")
 --handle serial answer
 
+end
+--]]
+
+function setTermiosSpeedFromVal(speed)
+	speed = speed or 9600
+	local baud_key = "B" .. tostring(speed)
+	local baud_const = termios[baud_key]
+	if not baud_const then
+		error("Unsupported baud rate: " .. tostring(speed))
+	end
+	return baud_const
+	
+end
+	
+
+
+function SerialPort(PortPath)
+
+		if verbose(2) then print("Opening serial port: "..PortPath ) end
+		local f = file.open(PortPath)  -- open the selected return the raw file descriptor		
+		if not f then
+			print ("Serial port : "..PortPath .." not found" )			
+		else
+			local attr, err = termios.tcgetattr(f) --get the settings from the serial port
+			local nattr = attr:clone() --make a copy of the settings 
+			nattr:clr_flag('l', termios.ECHO)  -- Disable echo
+			nattr:set_speed(setTermiosSpeedFromVal(config.Serial.baudRate))  -- Set baud rate
+			--Set the new connection data
+			termios.tcsetattr(f, termios.TCSANOW, nattr)		
+			if verbose(2) then print ("Serial port : "..PortPath .." open" ) end
+		end
+		return f
+
+end
+
+function readnPublishTemperatures(client,Sensornum)
+	Sensornum= Sensornum or -1 -- -1 = all
+	local command = Sensornum .. "\n"
+	
+	local fd= SerialPort(serialPortPath)
+	if verbose(3) then
+		print("File descriptor: ",fd)	
+		print("Command to send : "..command)
+	end
+	local ok, eco = file.writefile(serialPortPath, command)
+	--Send a request for data
+	if not ok then
+		print("Failed to send command: "..command.. " Result: " , err) 
+	else
+		if verbose(2) then
+			print("Sent command: "..command.. " Result: " , err)
+		end
+	end
+	
+	local b = bufio.new(fd)
+	-- Read a line (ends with \n)
+	--local line, err = b:readline()
+	--local line, err = b:read('l')
+	local timeout = 2
+	local result = brf.MqttHeader()
+	local LineCount=0
+	while true do
+	--local line, err = b:read('L')		
+		local line, err = b:read('L',timeout)
+		if line then						
+			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
+			LineCount=LineCount+1
+				
+			 if verbose(11) then print("Received line:", line) end
+		elseif err == "timeout" then
+			if verbose(5) then  print("All data read") end 
+			break  -- no more data within timeout
+		else
+			print("Read error:", err)
+			break
+		end
+	end
+	--remove the last comma
+	result= result:gsub(",%s*$", "\n}")
+	
+	if verbose(5) then print (result) end 
+	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
+	file.close(fd)
 end
 
 --\functions section
@@ -84,6 +177,7 @@ if config.sim_data.Simulated==1 then
 	--Use socat for the serial simulation, remember the settings and record the pid, so socat can be stopped with the service
 	local tmpfile = config.sim_data.tmpfile
 	local pidfile = "/var/run/socat_output.Serial2MqttArduinoDs18b20.pid"
+	--socat -d -d pty,raw,echo=0,b9600 pty,raw,echo=0,b9600
 	local serialPortDefinition="pty,raw,echo=0,b".. config.Serial.baudRate .. " "
 	local cmd = "sh -c 'socat -d -d "..serialPortDefinition..serialPortDefinition .."> " .. tmpfile .. " 2>&1 & echo $! > " .. pidfile .. "'"
 	if verbose(5) then
@@ -199,88 +293,6 @@ eco.run(function(name)
 		time.sleep(config.PollTime)
 	end
 end,'eco2')
-
-
-
---[[
-
-
-
-
-
---Function to send temperatures to mqtt
-local function readnPublishTemperatures(client,verbose)
-	local sensors={}
-	--Open the serial port	
-	local serial = io.open(serialPortPath, "r")
-	if not serial then
-		error("Failed to open serial port")
-	end
-	
-	--get ALL data from the port
-	local data = serial:read("*line")  -- Reads until newline
-	local StartTime=time.now()	
-	local count=0
-	local timeout=false
-	while (data and not timeout) do
-		
-		if verbose then print("Received:", data) end 
-		print("Received:", data)
-			
-		local numbers = {}
-		--Get sensor number and value from the string
-		for num in string.gmatch(data, "%d+") do
-			table.insert(numbers, tonumber(num))
-		end
-	    brfUtils.AddToTableByIdx(sensors,numbers[1],numbers[2])
-		
-			--Add the sensor + value to sensors
-			--table.insert(sensors, {
-			--	id = numbers[1],
-			--	value = numbers[2]
-			--})
-		data = serial:read("*line")  -- Reads until newline	
-		count=brfUtils.TblCount(sensors)
-		if count>=2 then
-			if time.now()<StartTime+config.PollTime then
-				timeout = true
-			end
-		end
-	end
-
-	--get a timestamp, to mimmic tasmotas way of doing things
-	local handle = io.popen("date -Iseconds")
-	local timestamp = handle:read("*a"):gsub("\n", "")
-	handle:close()
-	--verbose and print("timestamp: "..timestamp)
-		
-
-	local Output = brfUtils.MqttHeader()	
-	
-	for id, value in pairs(sensors) do
-		indentlevel = 1 
-		indent = string.rep("  ", indentlevel)
-		Output = Output .. indent .. '"DS18B20-' .. id ..'": {\n'
-		indentlevel = 2 
-		indent = string.rep("  ", indentlevel)
-		Output = Output .. indent ..'"Temperature": ' .. value .. '\n'		
-		indentlevel = 1 
-		indent = string.rep("  ", indentlevel)
-		Output = Output .. indent .. '},\n'		
-		if verbose then print ('"DS18B20-' .. id ..':  ' .. value ) end
-	end
-		Output = Output .. indent .. '"TempUnit": "C"\n'
-		Output = Output ..'}'
-		client:publish('stat'..config.Topic_String , Output, mqtt.QOS0)
-
-	if verbose then  print('Published:',Output) end	
-end
-
-
-
-
-
-
 
 
 

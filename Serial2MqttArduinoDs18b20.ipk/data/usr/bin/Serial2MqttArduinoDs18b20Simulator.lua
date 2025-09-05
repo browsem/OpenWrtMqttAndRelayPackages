@@ -34,7 +34,7 @@ local SleepTime=config.PollTime/2
 --functions section
 
 function verbose(level)	
-	return level<= config.verbose 
+	return level<= config.sim_data.verbose 
 end
 
 function setSerial()
@@ -111,13 +111,13 @@ function ShapeAndSendData(StartSensor)
 			print ("sensorId".. idx ..": "..sensorId[idx])
 		end
 		
-		local serialAnw=('"DS18B20-'
+		local serielAnsw=('"DS18B20-'
 			..idx.. 
 			'": { "Id": "'
 			.. sensorId[idx].. 
 			'","Temperature": '
-			..temp[idx] .. '}')
-		if verbose(2) then print("serialAnw: "..serialAnw.."\n") end
+			..temp[idx] .. '}'.."\n")
+		if verbose(2) then print("serielAnsw: "..serielAnsw) end
 		
 		--open the port for write				
 		VirtualSerialPort, err = io.open(serialPortPath, "w")
@@ -125,8 +125,8 @@ function ShapeAndSendData(StartSensor)
 			print("Error opening "..serialPortPath.. ":", err)
 			return
 		end
-		VirtualSerialPort:write(serialAnw)	
-		VirtualSerialPort:flush()
+		VirtualSerialPort:write(serielAnsw)	
+		
 		VirtualSerialPort:close()
 	end
 end
@@ -157,7 +157,7 @@ else
 				-- Print the received line
 				print("Received:", line)
 			end
-			if line=="all" then
+			if line=="-1" then
 				ShapeAndSendData()
 			else
 				if verbose(2) then  
