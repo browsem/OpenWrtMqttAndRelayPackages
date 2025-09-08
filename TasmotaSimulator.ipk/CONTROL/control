@@ -1,4 +1,4 @@
-Package: Serial2MqttArduinoDs18b20
+Package: TasmotaSimulator
 Version: 0.8
 Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson,
 Section: utils

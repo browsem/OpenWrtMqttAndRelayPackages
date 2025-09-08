@@ -2,9 +2,6 @@
 
 local mqtt = require 'eco.mqtt'
 local time = require 'eco.time'
-local termios = require 'eco.termios'
-local file = require 'eco.file'
-local bufio = require 'eco.bufio'
 
 
 -- adding to path
@@ -14,17 +11,16 @@ local brf =  require 'brfUtils'
 
 
 --Read config data from config file
-local config = brf.Load_config("/etc/Serial2MqttArduinoDs18b20.json")
+local config = brf.Load_config("/etc/TasmotaSimulator.json")
 
 
 --INTERNAL "GLOBAL" VARAIABLES SECTION
 
+local temp={} --temperature array
+local sensorId={}
 
+local startTime = os.time()
 
-local serialPortPath=""
-local pts1 
-local pts2
-local clientConnected=false 
 
 --\INTERNAL "GLOBAL" VARAIABLES SECTION
 
@@ -33,15 +29,9 @@ local clientConnected=false
 function verbose(level)	
 	return level<= config.verbose 
 end
+
 --[[
-function setSerial()
-	--configure the serial port
-	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
-	if verbose(2) then
-		print (SerSetCmd)
-	end
-	os.execute(SerSetCmd)
-end
+
 
 function readnPublishTemperatures(client)
 	print ("her")
@@ -84,7 +74,7 @@ function readnPublishTemperatures(client)
 --handle serial answer
 
 end
---]]
+
 
 function setTermiosSpeedFromVal(speed)
 	speed = speed or 9600
@@ -171,73 +161,127 @@ function readnPublishTemperatures(client,Sensornum)
 	if verbose(2) then print('Published:\n'.. result) end			
 end
 
+function ShapeAndSendData(StartSensor)
+	local Output =""
+	local nrOfSensors=0
+	local NextToAddMin=0
+	local NextToAddMax=0
+	local NextToAdd=0
+	
+	if StartSensor then
+		nrOfSensors=StartSensor
+	else
+		StartSensor=1
+		nrOfSensors=config.NumberOfSensors
+	end
+	--for all simulated sensors
+	
+	
+end
+
+	
+end	
+
+--]]
+
+function randomFix(tempin)
+	local NextToAddMin=0
+	local NextToAddMax=5
+	local NextToAdd=(math.random(NextToAddMin,NextToAddMax))
+	local tempout
+	if (NextToAdd % 2 == 0) then
+		tempout=tempin+NextToAdd
+	else
+		tempout=tempin-NextToAdd
+	end
+	if tempout<config.temperature_Min then
+		tempout=config.temperature_Min+NextToAdd
+	end
+	if tempout>config.temperature_Max then
+		tempout=config.temperature_Max-NextToAdd
+	end			
+	return tempout
+end				
+
+
+
+function Relays(client,number,cmd)
+	number = tonumber(number) or -1 -- -1 = all 
+	cmd = cmd or ""
+	if verbose(1) then print('Set relay: ' .. number ..": ".. cmd) end
+	
+end
+
+function Sensors(client)
+	--read and send all sensors
+	local result = brf.MqttHeader()
+	local LineCount=0
+	for idx=1,config.NumberOfSensors do
+		--Make sure the array exists
+		if not temp[idx] then
+			temp[idx]=0
+		end
+		--Make the temperature go up slowly
+		if os.time()< startTime+30 then
+			if verbose(2) and idx==1 then
+				print ("still Early")
+			end		
+			NextToAddMin=2
+			NextToAddMax=math.floor(2*config.temperature_Min/(config.temperature_from_zero_to_min_time/config.PollTime))
+			NextToAdd=(math.random(NextToAddMin,NextToAddMax))					
+			temp[idx]=temp[idx]+NextToAdd
+			
+			if temp[idx]>config.temperature_Max then
+				temp[idx]=randomFix(temp[idx])
+			end
+		else
+			if verbose(2) and idx==1  then
+				print ("late")
+			end
+			temp[idx]=randomFix(temp[idx])
+		end
+		if verbose(5) then
+			print ("SensorTemp".. idx ..": " .. temp[idx])
+			print ("sensorId".. idx ..": "..sensorId[idx])
+		end
+		
+		local SensorData=('"DS18B20-'
+			..idx.. 
+			'": { "Id": "'
+			.. sensorId[idx].. 
+			'","Temperature": '
+			..temp[idx] .. '},\n')
+			
+		if verbose(2) then print("SensorData: "..SensorData) end
+		--add sensordata to result
+
+		result= result .. brf.Indent(2) .. SensorData
+		
+	end
+	--remove the last comma
+	result= result:gsub(",%s*$", "\n}")	
+	if verbose(5) then print (result) end 
+	
+	client:publish('stat'..config.Topic_String .."/SENSOR" , result, mqtt.QOS0)
+	if verbose(2) then 
+		print('Published:\n'.. result) 
+		print('To: '.. 'stat'..config.Topic_String .."/SENSOR")
+	end			
+end
+
+
+function publishAll(client)
+	Relays(client)
+	Sensors(client)
+end
+
 --\functions section
 
 
---startup the simulation if wanted
-if config.sim_data.Simulated==1 then
-	if verbose(1) then print("Start the simulation") end	
-	--Use socat for the serial simulation, remember the settings and record the pid, so socat can be stopped with the service
-	local tmpfile = config.sim_data.tmpfile
-	local pidfile = "/var/run/socat_output.Serial2MqttArduinoDs18b20.pid"
-	--socat -d -d pty,raw,echo=0,b9600 pty,raw,echo=0,b9600
-	local serialPortDefinition="pty,raw,echo=0,b".. config.Serial.baudRate .. " "
-	local cmd = "sh -c 'socat -d -d "..serialPortDefinition..serialPortDefinition .."> " .. tmpfile .. " 2>&1 & echo $! > " .. pidfile .. "'"
-	if verbose(5) then
-		print ("tmpfile: " .. tmpfile)
-		print ("pidfile: " .. pidfile )
-		print ("cmd: " .. cmd)
-	end
-	os.execute(cmd)
-	-- Wait briefly for socat to start and write output
-	time.sleep(5)
-	-- Read PID
-	local pidHandle = io.open(pidfile, "r")
-	local pid = pidHandle:read("*l")
-	pidHandle:close()
-	if verbose(2) then print ("socat PID ".. pid) end
-	-- Read the internal serial port paths from the temp file
-	local handle = io.open(tmpfile, "r")
-	local output = handle:read("*a")
-	handle:close()
 
-	-- Extract PTYs
-	pts1 = output:match("PTY is (/dev/pts/%d+)")
-	pts2 = output:match("PTY is /dev/pts/(%d+)", output:find(pts1) + 1)	
+--Set the sensorID
+sensorId=brf.DS18B20ID(config.NumberOfSensors,config.RandomSensorIdSeed)
 
-	-- Set the serialport for this program
-	serialPortPath=pts1
-	if verbose(1) then
-		print("Created PTYs:")
-		print("  PTY1: " .. (pts1 or "not found"))
-		print("  PTY2: /dev/pts/" .. (pts2 or "not found"))
-		print ("starting sim with /dev/pts".. pts2)
-		
-	end
-	local SimCmd = brf.Script_path() .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
-	if verbose(2) then
-		print (SimCmd)
-	end
-	os.execute(SimCmd .."&")				
-else 
-	if verbose(1) then
-		print("using serial port from ".. config.Serial_port)
-	end
-	pts1=0
-	pts2=0
-	serialPortPath=config.Serial_port	
-	if verbose(1) then		
-		print ("starting serialport ".. serialPortPath)		
-	end
---[[	setSerial()
-	--configure the serial port
-	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
-	if verbose(2) then
-		print (SerSetCmd)
-	end
-	os.execute(SimCmd .."&")
-	--]]
-end	
 
 
 
@@ -261,8 +305,8 @@ client:on({
 		end
 		--readnPublishTemperatures(client)	
 		--define what we want to subscribe to		
-		client:subscribe('cmnd'.. config.Topic_String, mqtt.QOS0)	
-		if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
+		client:subscribe('cmnd'.. config.Topic_String.."/#", mqtt.QOS0)	
+		if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String.."/#") end
 	end,
 	
 	publish  = function(pkt, client)
@@ -270,10 +314,24 @@ client:on({
 		
 		if verbose(2) then 
 			print('Received message on topic:', pkt.topic) 
-			print('Payload:', pkt.payload) 
+			print('Payload:', pkt.payload)  
 		end
+		local prefix, device, subject = pkt.topic:match("([^/]+)/([^/]+)/([^/]+)")
+		if verbose(2) then 
+			print("Prefix:", prefix)
+			print("Device:", device)
+			print("subject:", subject)
+		end		
+		if subject=="POWER" then
+			--were handling relays			
+			local number = pkt.payload:match("%d+") or -1
+			local cmd = pkt.payload:match("on") or pkt.payload:match("off")
+			if cmd then
+				Relays(client,number,cmd)				
+			end			
+		end		
 		--return read and publish sensors		
-		readnPublishTemperatures(client,pkt.payload)
+		publishAll(client)
 		--os.exit()
 		--print("food")
 	end,
@@ -281,24 +339,33 @@ client:on({
 	error = function(err)
 		print('MQTT error:', err)
 	end
-	end
 })
+
 
 --start the mqtt client, restart if it chrashes
 eco.run(function(name)		
 	if verbose(1) then print("Starting task eco1") end
 	while true do 
-		client:run()
-		clientConnected=false
+		if config.Simulated then
+			client:run()
+			clientConnected=false
+		else
+			if verbose(1) then print("Not doing anything but sleeping") end
+		end
 		time.sleep(5)
 	end
 end,'eco1')
 
 --resend every polltime sec
 eco.run(function(name)
+	
 	if verbose(1) then print("Starting task eco2") end
-	while true do 		
-		readnPublishTemperatures(client)				
+	while true do 
+		if config.Simulated then	
+			publishAll(client)						
+		else
+			if verbose(1) then print("Not doing anything but sleeping") end
+		end
 		time.sleep(config.PollTime)
 	end
 end,'eco2')

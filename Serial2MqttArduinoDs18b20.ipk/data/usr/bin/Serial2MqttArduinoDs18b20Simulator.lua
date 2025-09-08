@@ -18,7 +18,7 @@ local brf =  require 'brfUtils'
 local config = brf.Load_config("/etc/Serial2MqttArduinoDs18b20.json")
 
 
---INTERNALT "GLOBAL" VARAIABLES SECTION
+--INTERNAL "GLOBAL" VARAIABLES SECTION
 
 local serialPortPath=""
 local pts1 
@@ -29,7 +29,7 @@ local sensorId={}
 local temp={}
 local SleepTime=config.PollTime/2
 
---\INTERNALT "GLOBAL" VARAIABLES SECTION
+--\INTERNAL "GLOBAL" VARAIABLES SECTION
 
 --functions section
 

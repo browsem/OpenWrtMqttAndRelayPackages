@@ -1,0 +1,24 @@
+{
+  "ipaddr_Comment": "Replace with your broker IP",
+  "ipaddr": "192.168.40.136",
+  "port_Comment": "Or 8883 for TLS",
+  "port": 1883,
+  "username": "Enter your username",
+  "password": "Enter your password",
+  "Topic_String":"/TERMOKANDE",
+  "NumberOfSensors": 2,
+  "NumberOfRelays": 1,
+  "RandomSensorIdSeed":15,
+  "Sim_Comment1": "0: Run against the real tasmota",
+  "Sim_Comment2": "1: else run this simple simulator",  
+  "STATE_FILE":"/tmp/TasmotaRelayState",
+   "temperature_Max":65,
+  "temperature_Min":45,
+  "temperature_Channel_Max_Deviation":5,
+  "temperature_from_zero_to_min_time":30,
+  "PollTime": 10,
+  "verbose":10,
+  "Simulated":1
+}
+
+
