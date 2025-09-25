@@ -33,58 +33,6 @@ local clientConnected=false
 function verbose(level)	
 	return level<= config.verbose 
 end
---[[
-function setSerial()
-	--configure the serial port
-	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
-	if verbose(2) then
-		print (SerSetCmd)
-	end
-	os.execute(SerSetCmd)
-end
-
-function readnPublishTemperatures(client)
-	print ("her")
-	--open for read/write
-	-- Write to serial, get all
-	local SerialPortAsFile = io.open(serialPortPath, "w")
-	local serialReq="all\n"
-	if verbose(2) then 
-		print("writing to :".. serialPortPath)
-		print("SerialCmd: "..serialReq) 
-	end
-	SerialPortAsFile:write(serialReq)
-	SerialPortAsFile:flush()
-	SerialPortAsFile:close()
-	
-	local serial = io.open(serialPortPath, "r")			
-	-- Read one line (blocks until newline is received)
-	local done=false
-	local LinesRead = 0
-	
-	StartTime = os.time()
-	
-	while not done do
-		local line = serial:read("*line")
-		if line then
-			LinesRead=LinesRead+1
-			if verbose(1) then 
-				-- Print the received line
-				print("Received:", line)
-			end
-		end
-		if LinesRead>= config.NumberOfSensors then
-			done=true
-		end
-		if StartTime+2<os.time() then
-			done=true
-		end	
-	end
-	print("done")
---handle serial answer
-
-end
---]]
 
 function setTermiosSpeedFromVal(speed)
 	speed = speed or 9600
@@ -214,11 +162,15 @@ if config.sim_data.Simulated==1 then
 		print ("starting sim with /dev/pts".. pts2)
 		
 	end
-	local SimCmd = brf.Script_path() .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
+	
+	
+	--local SimCmd = "/usr/bin/" .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
+	local SimCmd =brf.GetFullFilePathFromOpk('Serial2MqttArduinoDs18b20','Serial2MqttArduinoDs18b20Simulator') .. " ".. pts2
+	
 	if verbose(2) then
-		print (SimCmd)
+		print ("SimCmd: " .. SimCmd)
 	end
-	os.execute(SimCmd .."&")				
+	os.execute(SimCmd .." &")				
 else 
 	if verbose(1) then
 		print("using serial port from ".. config.Serial_port)
@@ -229,17 +181,9 @@ else
 	if verbose(1) then		
 		print ("starting serialport ".. serialPortPath)		
 	end
---[[	setSerial()
-	--configure the serial port
-	local SerSetCmd="stty -F ".. serialPortPath .. " "  .. config.Serial.baudRate .. " "  .. config.Serial.settings
-	if verbose(2) then
-		print (SerSetCmd)
-	end
-	os.execute(SimCmd .."&")
-	--]]
+
+
 end	
-
-
 
 -- Create MQTT client
 local client = mqtt.new({
@@ -280,7 +224,6 @@ client:on({
 
 	error = function(err)
 		print('MQTT error:', err)
-	end
 	end
 })
 

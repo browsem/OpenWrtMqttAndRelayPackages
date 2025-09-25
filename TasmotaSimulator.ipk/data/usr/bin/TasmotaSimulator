@@ -18,7 +18,7 @@ local config = brf.Load_config("/etc/TasmotaSimulator.json")
 
 local temp={} --temperature array
 local sensorId={}
-
+local relayPath = ""		
 local startTime = os.time()
 
 
@@ -26,165 +26,12 @@ local startTime = os.time()
 
 --functions section
 
-function verbose(level)	
+local function verbose(level)	
 	return level<= config.verbose 
 end
 
---[[
 
-
-function readnPublishTemperatures(client)
-	print ("her")
-	--open for read/write
-	-- Write to serial, get all
-	local SerialPortAsFile = io.open(serialPortPath, "w")
-	local serialReq="all\n"
-	if verbose(2) then 
-		print("writing to :".. serialPortPath)
-		print("SerialCmd: "..serialReq) 
-	end
-	SerialPortAsFile:write(serialReq)
-	SerialPortAsFile:flush()
-	SerialPortAsFile:close()
-	
-	local serial = io.open(serialPortPath, "r")			
-	-- Read one line (blocks until newline is received)
-	local done=false
-	local LinesRead = 0
-	
-	StartTime = os.time()
-	
-	while not done do
-		local line = serial:read("*line")
-		if line then
-			LinesRead=LinesRead+1
-			if verbose(1) then 
-				-- Print the received line
-				print("Received:", line)
-			end
-		end
-		if LinesRead>= config.NumberOfSensors then
-			done=true
-		end
-		if StartTime+2<os.time() then
-			done=true
-		end	
-	end
-	print("done")
---handle serial answer
-
-end
-
-
-function setTermiosSpeedFromVal(speed)
-	speed = speed or 9600
-	local baud_key = "B" .. tostring(speed)
-	local baud_const = termios[baud_key]
-	if not baud_const then
-		error("Unsupported baud rate: " .. tostring(speed))
-	end
-	return baud_const
-	
-end
-	
-
-
-function SerialPort(PortPath)
-
-		if verbose(2) then print("Opening serial port: "..PortPath ) end
-		local f = file.open(PortPath)  -- open the selected return the raw file descriptor		
-		if not f then
-			print ("Serial port : "..PortPath .." not found" )			
-		else
-			local attr, err = termios.tcgetattr(f) --get the settings from the serial port
-			local nattr = attr:clone() --make a copy of the settings 
-			nattr:clr_flag('l', termios.ECHO)  -- Disable echo
-			nattr:set_speed(setTermiosSpeedFromVal(config.Serial.baudRate))  -- Set baud rate
-			--Set the new connection data
-			termios.tcsetattr(f, termios.TCSANOW, nattr)		
-			if verbose(2) then print ("Serial port : "..PortPath .." open" ) end
-		end
-		return f
-
-end
-
-function readnPublishTemperatures(client,Sensornum)
-	Sensornum = tonumber(Sensornum) or -1 -- -1 = all
-	local command = Sensornum .. "\n"
-	
-	local fd= SerialPort(serialPortPath)
-	if verbose(3) then
-		print("File descriptor: ",fd)	
-		print("Command to send : "..command)
-	end
-	local ok, eco = file.writefile(serialPortPath, command)
-	--Send a request for data
-	if not ok then
-		print("Failed to send command: "..command.. " Result: " , err) 
-	else
-		if verbose(2) then
-			print("Sent command: "..command.. " Result: " , err)
-		end
-	end
-	
-	local b = bufio.new(fd)
-	-- Read a line (ends with \n)
-	--local line, err = b:readline()
-	--local line, err = b:read('l')
-	local timeout = 2
-	local result = brf.MqttHeader()
-	local LineCount=0
-	while true do
-	--local line, err = b:read('L')		
-		local line, err = b:read('L',timeout)
-		if line then						
-			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
-			LineCount=LineCount+1
-				
-			 if verbose(11) then print("Received line:", line) end
-		elseif err == "timeout" then
-			if verbose(5) then  print("All data read") end 
-			break  -- no more data within timeout
-		else
-			print("Read error:", err)
-			break
-		end
-	end
-	--remove the last comma
-	result= result:gsub(",%s*$", "\n}")
-	
-	if verbose(5) then print (result) end 
-	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
-	file.close(fd)
-	
-	client:publish('stat'..config.Topic_String , result, mqtt.QOS0)
-	if verbose(2) then print('Published:\n'.. result) end			
-end
-
-function ShapeAndSendData(StartSensor)
-	local Output =""
-	local nrOfSensors=0
-	local NextToAddMin=0
-	local NextToAddMax=0
-	local NextToAdd=0
-	
-	if StartSensor then
-		nrOfSensors=StartSensor
-	else
-		StartSensor=1
-		nrOfSensors=config.NumberOfSensors
-	end
-	--for all simulated sensors
-	
-	
-end
-
-	
-end	
-
---]]
-
-function randomFix(tempin)
+local function randomFix(tempin)
 	local NextToAddMin=0
 	local NextToAddMax=5
 	local NextToAdd=(math.random(NextToAddMin,NextToAddMax))
@@ -204,15 +51,61 @@ function randomFix(tempin)
 end				
 
 
+local function readnPublishRelayStates(client,RelayNum)	
 
-function Relays(client,number,cmd)
-	number = tonumber(number) or -1 -- -1 = all 
-	cmd = cmd or ""
-	if verbose(1) then print('Set relay: ' .. number ..": ".. cmd) end
 	
+	local cmd = 'sh ' .. relayPath .. " -i"
+	if verbose(5) then print('cmd: '.. cmd) end
+	local handle = io.popen(cmd)			
+	local result = handle:read("*a")
+	handle:close()			
+	if verbose(9) then print (result) end
+	-- Parse the output into a Lua table
+	
+	local relays = brf.MqttHeader()
+	local indentlevel = 1 	
+	local idx = 0	
+	
+	--relays = relays .. brf.Indent(indentlevel) .. "{\n"
+	--indentlevel = indentlevel +1	
+	for line in result:gmatch("[^\r\n]+") do		
+		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
+		if relay and state then
+			if idx ~= 0 then			
+			relays = relays ..",\n"
+			end
+			--print (relays)
+			--print ('"' .. relay .. '"')
+			--print ('"' .. state .. '"')
+			--relays[relay] = state	
+			relays = relays .. brf.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
+			idx=idx+1
+		end		
+	end	
+	relays = relays .. brf.Indent(indentlevel) .."\n"
+	for idx = indentlevel,1,-1 do	
+		indentlevel = indentlevel -1		
+		relays = relays .. brf.Indent(indentlevel) .."}\n"
+	end
+		
+	if verbose(2) then print (relays) end
+	
+	-- Convert to JSON
+	--local result = json.encode({Relays = relays}, {indent = true})
+	local payload = relays
+	local publishPath ='stat'..config.Topic_String .."/POWER"
+	client:publish(publishPath, payload, mqtt.QOS0)
+	if verbose(2) then 
+		print ('Published:\n'.. payload)	
+		print ('To '.. publishPath ..'\n')
+	end		
+
+	
+	--print(result)
+
 end
 
-function Sensors(client)
+local function Sensors(client)
 	--read and send all sensors
 	local result = brf.MqttHeader()
 	local LineCount=0
@@ -261,18 +154,30 @@ function Sensors(client)
 	--remove the last comma
 	result= result:gsub(",%s*$", "\n}")	
 	if verbose(5) then print (result) end 
-	
-	client:publish('stat'..config.Topic_String .."/SENSOR" , result, mqtt.QOS0)
+	local publishPath ='stat'..config.Topic_String .."/SENSOR"
+	client:publish(publishPath , result, mqtt.QOS0)
 	if verbose(2) then 
 		print('Published:\n'.. result) 
-		print('To: '.. 'stat'..config.Topic_String .."/SENSOR")
+		print('To: '.. publishPath)
 	end			
 end
 
+local function publishAll(client)
+	readnPublishRelayStates(client)
+	Sensors(client)	
+end
 
-function publishAll(client)
-	Relays(client)
-	Sensors(client)
+local function SetReylay(payload)
+	local number = payload:match("%d+")
+	local cmd = payload:match("on") or payload:match("off")
+	local shCmd="sh " ..relayPath  .. " ".. number .. " " .. cmd 
+	if verbose(5) then
+		print ("shCmd :" .. shCmd)
+	end
+	if cmd then
+		local handle = io.popen(shCmd)		
+	
+	end
 end
 
 --\functions section
@@ -281,9 +186,10 @@ end
 
 --Set the sensorID
 sensorId=brf.DS18B20ID(config.NumberOfSensors,config.RandomSensorIdSeed)
-
-
-
+--Get path to cRelay.sh
+relayPath = brf.GetFullFilePathFromOpk('cRelayMqttWrapperService','cRelaySimulator.sh')
+--add local file vars
+relayPath = relayPath .." -n "..  config.NumberOfRelays .." -f ".. config.STATE_FILE 
 
 -- Create MQTT client
 local client = mqtt.new({
@@ -327,7 +233,7 @@ client:on({
 			local number = pkt.payload:match("%d+") or -1
 			local cmd = pkt.payload:match("on") or pkt.payload:match("off")
 			if cmd then
-				Relays(client,number,cmd)				
+				SetReylay(pkt.payload)							
 			end			
 		end		
 		--return read and publish sensors		
@@ -345,7 +251,7 @@ client:on({
 --start the mqtt client, restart if it chrashes
 eco.run(function(name)		
 	if verbose(1) then print("Starting task eco1") end
-	while true do 
+	--while true do 
 		if config.Simulated then
 			client:run()
 			clientConnected=false
@@ -353,7 +259,7 @@ eco.run(function(name)
 			if verbose(1) then print("Not doing anything but sleeping") end
 		end
 		time.sleep(5)
-	end
+	--end
 end,'eco1')
 
 --resend every polltime sec
@@ -362,7 +268,7 @@ eco.run(function(name)
 	if verbose(1) then print("Starting task eco2") end
 	while true do 
 		if config.Simulated then	
-			publishAll(client)						
+			publishAll(client)	
 		else
 			if verbose(1) then print("Not doing anything but sleeping") end
 		end

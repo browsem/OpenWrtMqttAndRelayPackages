@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Stop and disable the service before files are removed
+/etc/init.d/BrfHeatControl stop
+/etc/init.d/BrfHeatControl disable
+
+
+CONFIG_PATH="/etc/BrfHeatControl.json"
+DEFAULT_CONFIG="/usr/share/BrfHeatControl/etc/BrfHeatControl.json"
+
+# Compare files using checksum
+if cmp -s "$CONFIG_PATH" "$DEFAULT_CONFIG"; then
+    echo "Removing default config file"
+    rm "$CONFIG_PATH"
+else
+    echo "config file is modified,"
+	echo "preserving ${CONFIG_PATH}"
+fi
+

@@ -5,13 +5,13 @@ Functions included
 AddToTableByIdx
 DS18B20ID
 ExecuteToPID
+GetFullFilePathFromOpk
 FileExist
 Indent
 Load_config
 MqttHeader
 ReadFile
 PrintTable
-Script_path
 Sleep
 TblCount
 Timestamp
@@ -76,6 +76,14 @@ function M.FileExist(path)
   end
 end
 
+function M.GetFullFilePathFromOpk(Packagename,Filename)
+	
+	local cmd = 'opkg files '.. Packagename ..' | grep '.. Filename
+	local handle = io.popen(cmd)
+	local result = handle:read("*l")
+	handle:close()
+	return result
+end
 
 function M.Indent(indentlevel,Chars)
 	--Set the defaults
@@ -113,20 +121,11 @@ function M.Read_file(path)
     return content
 end
 
-
 function M.PrintTable(tbl)
     for key, value in pairs(tbl) do
         print(key, value)
     end
 end
-
-function M.Script_path()  
-  --local script = arg[0]
-  local cwd = io.popen("pwd"):read("*l") -- for Unix-like systems
-  --print (cwd)
-  return cwd .."/"
-end
-
 
 function M.Sleep(seconds)
   local start = os.clock()

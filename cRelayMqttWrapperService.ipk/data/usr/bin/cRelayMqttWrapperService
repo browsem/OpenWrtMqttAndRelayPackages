@@ -7,33 +7,85 @@ local time = require 'eco.time'
 
 package.path = package.path ..";/usr/lib/lua/?.lua"
 local json = require "dkjson"
-local brfUtils = require "brfUtils"
+local brf = require "brfUtils"
 
--- Function to read file contents
-local function read_file(path)
-    local file = io.open(path, "r")
-    if not file then
-        error("Could not open file: " .. path)
-    end
-    local content = file:read("*a")	
-    file:close()	
-    return content
-end
 
--- Load and parse JSON config
-local function load_config(path)	
-    local content = read_file(path)		
-    local config, pos, err = json.decode(content, 1, nil)
-	if err then
-        error("JSON decode error: " .. err)
-    end
-    return config
-end	
+local clientConnected = false
 
 
 --read the config file
-local config = load_config("/etc/cRelayMqttWrapperService.json")
+local config = brf.Load_config("/etc/cRelayMqttWrapperService.json")
 
+local function verbose(level)	
+	return level<= config.verbose 
+end
+
+
+
+local relayPath = ""
+if config.Simulated==1 then
+	--relayPath = "/usr/bin/cRelaySimulator.sh "
+	relayPath = brf.GetFullFilePathFromOpk('cRelayMqttWrapperService','cRelaySimulator.sh')
+else	
+	relayPath = "/usr/bin/crelay "
+end
+
+local function SetReylay(payload)
+	local number = payload:match("%d+")
+	local cmd = payload:match("on") or payload:match("off")
+	if cmd then
+		local handle = io.popen("sh ".. relayPath .. " " .. number .. " " .. cmd )		
+		print (relayPath .. number .. " " .. cmd )
+	end
+end
+
+local function readnPublishRelayStates(client,RelayNum)		
+	local shCmd=("sh ".. relayPath.. " -i")			
+	local handle = io.popen(shCmd)			
+	local result = handle:read("*a")
+	handle:close()			
+	if verbose(9) then print (result) end
+	-- Parse the output into a Lua table
+	
+	local relays = brf.MqttHeader()
+	local indentlevel = 1 	
+	local idx = 0	
+	
+	--relays = relays .. brf.Indent(indentlevel) .. "{\n"
+	--indentlevel = indentlevel +1	
+	for line in result:gmatch("[^\r\n]+") do		
+		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
+		if relay and state then
+			if idx ~= 0 then			
+			relays = relays ..",\n"
+			end
+			relays = relays .. brf.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
+			idx=idx+1
+		end		
+	end	
+	relays = relays .. brf.Indent(indentlevel) .."\n"
+	for idx = indentlevel,1,-1 do	
+		indentlevel = indentlevel -1		
+		relays = relays .. brf.Indent(indentlevel) .."}\n"
+	end
+		
+	if verbose(2) then print (relays) end
+	
+	-- Convert to JSON
+	--local result = json.encode({Relays = relays}, {indent = true})
+	local payload = relays
+	local publishPath ='stat'..config.Topic_String 
+	client:publish(publishPath, payload, mqtt.QOS0)
+	if verbose(2) then 
+		print ('Published:\n'.. payload)	
+		print ('To '.. publishPath ..'\n')
+	end		
+
+	
+	--print(result)
+
+end
+--
 -- Create MQTT client
 local client = mqtt.new({
     ipaddr = config.ipaddr,      -- Replace with your broker IP
@@ -44,112 +96,71 @@ local client = mqtt.new({
 })
 
 
-local relayPath = ""
-if config.Simulated==1 then
-	relayPath = "/usr/bin/cRelaySimulator.sh "
-else	
-	relayPath = "/usr/bin/crelay "
-end
-
-
--- -- Create MQTT client
--- local client = mqtt.new({
---     ipaddr = '192.168.40.136',      -- Replace with your broker IP
---     port = 1883,               -- Or 8883 for TLS
--- 	username = 'Thing01',
--- 	password = 'nulle',
---     clean_session = true
--- })
-
-local function readnPublishRelayStates(client,RelayNum)		
-	print ("sh ".. relayPath.. "-i")			
-	local handle = io.popen("sh ".. relayPath.. "-i")			
-	local result = handle:read("*a")
-	handle:close()			
-	--print (result)		
-	-- Parse the output into a Lua table
-	
-	local relays = brfUtils.MqttHeader()
-	local indentlevel = 1 	
-	local idx = 0	
-	
-	relays = relays .. brfUtils.Indent(indentlevel) .. "{\n"
-	indentlevel = indentlevel +1	
-	for line in result:gmatch("[^\r\n]+") do		
-		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
-		if relay and state then
-			if idx ~= 0 then			
-			relays = relays ..",\n"
-			end
-			--print (relays)
-			--print ('"' .. relay .. '"')
-			--print ('"' .. state .. '"')
-			--relays[relay] = state	
-			relays = relays .. brfUtils.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
-			idx=idx+1
-		end		
-	end	
-	relays = relays .. brfUtils.Indent(indentlevel) .."\n"
-	for idx = indentlevel,1,-1 do	
-		indentlevel = indentlevel -1		
-		relays = relays .. brfUtils.Indent(indentlevel) .."}\n"
-	end
-		
-	print (relays)
-	
-	-- Convert to JSON
-	--local result = json.encode({Relays = relays}, {indent = true})
-	local payload = relays
-	client:publish('stat'..config.Topic_String , payload, mqtt.QOS0)
-	print('Published:\n'.. payload)			
-
-	
-	--print(result)
-
-end
-
 -- Optional: set keepalive interval
 client:set('keepalive', 10.0)
---
 
 
 -- Define MQTT event handlers
 
-
 client:on({	
 	conack = function(ack, client)
-		print('Connected to broker:', ack.rc)		
-		readnPublishRelayStates(client,RelayNum)								
-		client:subscribe('cmnd'..config.Topic_String, mqtt.QOS0)
+		--This is what we do when first connected
+		if verbose(1) then print('Connected to broker:', ack.rc) end
+		if ack.rc == 0 then
+			clientConnected=true
+		end
+		--readnPublishTemperatures(client)	
+		--define what we want to subscribe to		
+		client:subscribe('cmnd'.. config.Topic_String, mqtt.QOS0)	
+		if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
 	end,
 	
-	publish = function(pkt, client)
-        print('Received message on topic:', pkt.topic)
-	
-		-- Extract number and command using pattern matching
-		print('Payload:', pkt.payload)
-		local number = pkt.payload:match("%d+")
-		local cmd = pkt.payload:match("on") or pkt.payload:match("off")
-		if cmd then
-			local handle = io.popen("sh ".. relayPath .. number .. " " .. cmd )		
-			print (relayPath .. number .. " " .. cmd )
-	    end
+	publish  = function(pkt, client)
+	--this is what we do, when we recieve a meassage
+		
+		if verbose(2) then 
+			print('Received message on topic:', pkt.topic) 
+			print('Payload:', pkt.payload) 
+		end
+		SetReylay(pkt.payload)	
+		--return read and publish sensor		
 		readnPublishRelayStates(client,number)				
+		
+		
 	end,
---
+
 	error = function(err)
 		print('MQTT error:', err)
 	end
+
 })
 
 
 
--- Run the client loop
-while true do
-	
-    client:run()
-    time.sleep(5)
-end
+--start the mqtt client, restart if it chrashes
+eco.run(function(name)		
+	if verbose(1) then print("Starting task eco1") end
+	while true do 
+		client:run()
+		clientConnected=false
+		time.sleep(5)
+	end
+end,'cRelaymqttWrap1')
+
+--resend every polltime sec
+eco.run(function(name)
+	time.sleep(5)
+	if verbose(1) then print("Starting task eco2") end
+	while true do 		
+		readnPublishRelayStates(client)				
+		time.sleep(config.PollTime)
+	end
+end,'cRelaymqttWrap2')
+
+
+
+
+
 
 --cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
 --stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)

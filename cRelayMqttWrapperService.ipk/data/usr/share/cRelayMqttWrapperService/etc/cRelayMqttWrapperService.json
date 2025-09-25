@@ -6,6 +6,8 @@
   "username": "Enter your username",
   "password": "Enter your password",   
   "Topic_String":"/LOCAL/POWER",
+  "PollTime":60,
+  "verbose":0,
   "Sim_Comment1": "0: Run the real cRelay",
   "Sim_Comment2": "1: else run my VERY simple simulator",
   "Simulated": 0

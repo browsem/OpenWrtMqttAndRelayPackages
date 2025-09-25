@@ -1,0 +1,147 @@
+#!/usr/bin/env eco
+
+
+local mqtt = require 'eco.mqtt'
+local time = require 'eco.time'
+-- adding to path
+
+package.path = package.path ..";/usr/lib/lua/?.lua"
+local json = require "dkjson"
+local brf = require "brfUtils"
+
+
+local clientConnected = false
+
+--read the config file
+local config = brf.Load_config("/etc/BrfHeatControl.json")
+
+local function verbose(level)	
+	return level<= config.verbose 
+end
+
+--Local global vars
+
+local state_log = {}
+
+--\Local global vars
+
+
+
+
+
+
+-- Create MQTT client
+local client = mqtt.new({
+    ipaddr = config.ipaddr,      -- Replace with your broker IP
+    port = config.port,               -- Or 8883 for TLS
+	username = config.username,
+	password = config.password,
+    clean_session = true
+})
+
+-- Optional: set keepalive interval
+client:set('keepalive', 10.0)
+
+-- Define MQTT event handlers
+
+client:on({	
+	conack = function(ack, client)
+		--This is what we do when first connected
+		if verbose(1) then print('Connected to broker:', ack.rc) end
+		if ack.rc == 0 then
+			clientConnected=true
+		end
+		--readnPublishTemperatures(client)	
+		--define what we want to subscribe to	
+		local topicStrings = config["Topic_Strings"]
+		local SubscribeStr=""
+		for location, data in pairs(topicStrings) do
+			if type(data) == "table" then
+				if data["Relays"]  then
+					SubscribeStr="stat" .. data["Relays"]
+					if verbose(11) then print("1 " ..  SubscribeStr) end
+					client:subscribe(SubscribeStr)
+				end
+				if data["Sensors"] then
+					SubscribeStr="stat" .. data["Sensors"]					
+					if verbose(11) then print("2 " .. SubscribeStr) end
+					client:subscribe(SubscribeStr)
+				end
+			end
+		end
+
+		
+		--if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
+	end,
+	
+	publish  = function(pkt, client)
+	--this is what we do, when we recieve a meassage		
+		
+		ReadMqtt(pkt)
+	end,
+
+	error = function(err)
+		print('MQTT error:', err)
+	end
+
+})
+
+
+
+--Local functions
+function ReadMqtt(pkt)
+	if verbose(2) then 
+		print('Received message on topic:', pkt.topic) 			
+		print('Payload:', pkt.payload) 
+	end		
+	local cmd, place, Type = string.match(pkt.topic, "/([^/]+)/([^/]+)/([^/]+)")
+	local State=
+	{
+		place = place,
+		Type = Type,           -- or "Relay"
+--id = "2",                  -- sensor or relay number
+ -- state = "23.5",            -- value or on/off
+		read_time = os.time()      -- Unix timestamp
+	}
+
+end
+
+function ActuateRelays(client)
+
+end
+
+--\Local functions
+
+
+
+
+--start the mqtt client, restart if it chrashes
+eco.run(function(name)		
+	if verbose(1) then print("Starting task eco1") end
+	while true do 
+		client:run()
+		clientConnected=false
+		time.sleep(5)
+	end
+end,'BrfHeatControl_1')
+--[[
+--resend the commands and ask for changes every poll time
+eco.run(function(name)
+	time.sleep(5)
+	if verbose(1) then print("Starting task eco2") end
+	while true do 		
+		ReadSensors(client)
+		ActuateRelays(client)
+		time.sleep(config.PollTime)
+	end
+end,'BrfHeatControl_2')
+
+
+
+
+
+
+--cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
+--stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)
+--tele/TOPIC/LWT	from middleware	Returns the status of the middleware (Online/Offline)
+--]]

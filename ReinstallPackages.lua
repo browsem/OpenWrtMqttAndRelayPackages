@@ -317,19 +317,19 @@ if Install then
 				--Should be ready to install
 				--if the package is present then				
 				if not FileExist(pkgI.FileName) then
-					print ("try to install from web")
+					print ("trying to install from web")
 					if not opkgUpdated then
 						opkg("update ","")	
 						opkgUpdated=true
 					end
-					opkg("install ",pkgI.PkgName)	
+					opkg("install ",pkgI.PkgName)					
 				else
 					opkg("install ",pkgI.FileName)	
 				end					
 				if NotTesting then
-					print ("Package " .. pkgI.PkgName .. "is installed")
+					print ("Package " .. pkgI.PkgName .. " is installed\n")
 				else
-					print ("Package " .. pkgI.PkgName .. "is (test) installed")
+					print ("Package " .. pkgI.PkgName .. " is (test) installed\n")
 				end
 			end
 		end

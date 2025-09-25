@@ -27,30 +27,38 @@ WriteToFile(){
 }
 
 
-
 # Ensure the state file exists
 touch "$STATE_FILE"
+FLAG_I=false
+# Parse optional flags
+while getopts ":f:n:i" opt; do	
+	case "${opt}" in
+    f) STATE_FILE="$OPTARG" ;;
+    n) NumberOfRelaysSimulated="$OPTARG" ;;	
+	i) FLAG_I=true ;;
+    *) echo "Usage: $0 [-f state_file] [-n num_relays] [-i] [relay] [ON|OFF]" >&2
+       exit 1 ;;
+  esac
+done
 
-# If two arguments are given, update the value
+# Shift away parsed options
+shift $((OPTIND - 1))
 
-if [ "$1" = "-i" ]; then
 
+if [ "$FLAG_I" = true ]; then
 	echo Card 1: Serial number 87654321, $NumberOfRelaysSimulated relays
 	for i in $(seq 1 $NumberOfRelaysSimulated)
 	do
 		Recur $i
 	done
+
 else
+# If two arguments are given, update the value
+
 	if [ $# -eq 2 ]; then
 		WriteToFile $1 $2 
 	#    key="$1"
 	#    value="$2"
-	#	
-	#    # Remove existing entry for the key
-	#    grep -v "^$key=" "$STATE_FILE" > "${STATE_FILE}.tmp"
-	#    echo "$key=$value" >> "${STATE_FILE}.tmp"
-	#    mv "${STATE_FILE}.tmp" "$STATE_FILE"
-	#    echo "Set $key to $value"
 
 	# If one argument is given, retrieve the value
 	elif [ $# -eq 1 ]; then

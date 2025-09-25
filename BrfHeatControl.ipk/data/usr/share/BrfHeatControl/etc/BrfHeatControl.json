@@ -1,0 +1,44 @@
+{
+"ipaddr_Comment": "Replace with your broker IP",
+"ipaddr": "192.168.40.136",
+"port_Comment": "Or 8883 for TLS",
+"port": 1883,
+"username": "Enter your username",
+"password": "Enter your password",   
+"Topic_Strings":{
+	"Local":{ 
+		"Relays":"/LOCAL/POWER",
+		"RelaysToActuate":{
+			"comment":
+			"Relay nr as presented : reverse on/off",
+			"2":"NonInv"
+			"3":"NonInv"
+			},
+		"Sensors":"/LOCAL/SENSOR",
+		"SensorsToRead":{
+			"comment":
+			"sensor nr as presented : correction value to add to the measured temperatue",
+			"1":"0",
+			"2":"0"
+			},
+		},
+	"Remote":{
+		"Relays":"/THERMOKANDE/POWER",
+		"RelaysToActuate":{
+			"1":"NonInv"
+			},
+		"Sensors":"/THERMOKANDE/SENSOR",
+		"SensorsToRead":{
+			"sensor nr as presented : correction value to add to the measured temperatue",
+			"1":"0",
+			"2":"0"
+			}
+		}
+	},
+"ChangeOverTempDiff":{
+	"Rising":-3,
+	"Falling":-3
+	},
+"PollTime":20,
+"verbose":10,
+}
