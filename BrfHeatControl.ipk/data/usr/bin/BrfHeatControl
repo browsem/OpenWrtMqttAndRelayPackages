@@ -20,8 +20,16 @@ local function verbose(level)
 end
 
 --Local global vars
-
+local WorkData = {}
 local state_log = {}
+local LocalRelays ={}
+local LocalSensors ={}
+local RemoteRelays ={}
+local RemoteSensors ={}
+local TempDiffThermoToLocal=0
+local LastChangeTime=nil
+local RemoteState=0
+local RemoteOn=0
 
 --\Local global vars
 
@@ -55,28 +63,29 @@ client:on({
 		--define what we want to subscribe to	
 		local topicStrings = config["Topic_Strings"]
 		local SubscribeStr=""
-		for location, data in pairs(topicStrings) do
+		local SubData
+		for location, data in pairs(topicStrings) do			
 			if type(data) == "table" then
-				if data["Relays"]  then
-					SubscribeStr="stat" .. data["Relays"]
-					if verbose(11) then print("1 " ..  SubscribeStr) end
+				if verbose(10) then brf.PrintTable(data) end
+				if data["Relays"]  then										
+					SubscribeStr="stat" .. data["Relays"].Topic
+					if verbose(10) then print("1 " ..  SubscribeStr) end
 					client:subscribe(SubscribeStr)
 				end
 				if data["Sensors"] then
-					SubscribeStr="stat" .. data["Sensors"]					
-					if verbose(11) then print("2 " .. SubscribeStr) end
+					SubscribeStr="stat" .. data["Sensors"].Topic					
+					if verbose(10) then print("2 " .. SubscribeStr) end
 					client:subscribe(SubscribeStr)
 				end
 			end
+			
 		end
 
-		
 		--if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
 	end,
 	
 	publish  = function(pkt, client)
-	--this is what we do, when we recieve a meassage		
-		
+	--this is what we do, when we recieve a meassage			
 		ReadMqtt(pkt)
 	end,
 
@@ -89,31 +98,229 @@ client:on({
 
 
 --Local functions
+
+function GetFromConfig()
+LocalRelays=config.Topic_Strings.Local.Relays.RelaysToActuate
+LocalSensors=config.Topic_Strings.Local.Sensors.SensorsToRead
+RemoteRelays=config.Topic_Strings.Remote.Relays.RelaysToActuate
+RemoteSensors=config.Topic_Strings.Remote.Sensors.SensorsToRead
+
+	if verbose(10) then 
+		brf.PrintTable(LocalRelays)
+		brf.PrintTable(LocalSensors)
+		brf.PrintTable(RemoteRelays)
+		brf.PrintTable(RemoteSensors)
+	end
+end
+
 function ReadMqtt(pkt)
-	if verbose(2) then 
+	if verbose(10) then 
 		print('Received message on topic:', pkt.topic) 			
 		print('Payload:', pkt.payload) 
 	end		
-	local cmd, place, Type = string.match(pkt.topic, "/([^/]+)/([^/]+)/([^/]+)")
-	local State=
-	{
-		place = place,
-		Type = Type,           -- or "Relay"
---id = "2",                  -- sensor or relay number
- -- state = "23.5",            -- value or on/off
-		read_time = os.time()      -- Unix timestamp
-	}
-
+	local cmd, place, Type = string.match(pkt.topic, "([^/]+)/([^/]+)/([^/]+)")
+	if verbose(10) then 
+		print ("cmd: " .. cmd)
+		print ("place: " .. place )
+		print ("Type: " .. Type)
+		print('Payload:', pkt.payload) 
+	end
+	--make sure theres room for the data
+	-- Ensure WorkData[Type] exists
+	WorkData[Type] = WorkData[Type] or {}
+	
+	WorkData[Type][place] = pkt.payload
+	if verbose(9) then print ( "[Type: " .. Type .. "][place: " .. place .. "]: " .. WorkData[Type][place]) end
+	
 end
 
-function ActuateRelays(client)
+function getTemp(place,SensorConfig)
+	local CurrName=""
+	local LclSensCnt=0	
+	local LclSensDataCnt=0	
+	local LclSensTmp=0
+	local LclSensTmpCorrected=0
+	local retval=nil
+	if WorkData["SENSOR"] and WorkData["SENSOR"][place] then
+		local SensorLocal=WorkData["SENSOR"][place] 
+		local data, pos, err = json.decode(SensorLocal)
+		local currSensor=""
+		for key, Offset in pairs(SensorConfig) do		
+			if verbose(9) then print(key, Offset) end
+			currSensor="DS18B20-".. key
+			if data and data[currSensor] then	
+				LclSensTmpCorrected=data[currSensor].Temperature + Offset
+				if verbose(9) then
+					print (currSensor .." found, Temperature: " .. data[currSensor].Temperature .. ", Offset val: " .. Offset)
+					print ("Corrected temp: ", LclSensTmpCorrected)
+				end
+				LclSensTmp=LclSensTmp+LclSensTmpCorrected
+				LclSensDataCnt=LclSensDataCnt+1
+			end
+			LclSensCnt=LclSensCnt+1
+			retval=LclSensTmp/LclSensCnt			
+		end		
+		if LclSensDataCnt ~= LclSensCnt then
+			if verbose(8) then 
+				print ("Not enough [SENSOR][" .. place.. "] data"	)
+				print("we didnt have enough data") 
+			end
+			return nil, "Not enough [SENSOR][" .. place.. "] data"		
+		else
+			
+			if verbose(9) then print("[SENSOR][" .. place.. "] temperature: " .. retval ) end
+			return retval 
+		end
+	else
+		if verbose(9) then print("no data")	end
+		return nil, "No data"		
+    end	
 
 end
+function HandleInv(RemoteOn,inv)
+	local OutputVal = "off"
+	if inv=="Inv" then
+		
+		if not RemoteOn then
+			OutputVal = "on"
+		end
+	else
+		if RemoteOn then
+			OutputVal = "on"
+		end
+	end		
+	return OutputVal
+end
+
+function SetRelays(RemoteOn)
+	if verbose(2) then print ("Turning relays: ",RemoteOn) end
+	if verbose(9) then
+		brf.PrintTable(LocalRelays)
+		brf.PrintTable(RemoteRelays)
+	end
+	local publishPath =""
+	local OutputVal="off"
+	publishPath ='cmnd'..config.Topic_Strings.Local.Relays.Topic
+	if verbose(2) then	print ("publishPath LOCAL: ",publishPath) end
+	for relaynum,inv in pairs(LocalRelays) do
+		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
+		if verbose(2) then	print ("OutputVal: ".. OutputVal) end
+		client:publish(publishPath, OutputVal, mqtt.QOS0)
+	end		
+	
+	publishPath ='cmnd'..config.Topic_Strings.Remote.Relays.Topic
+	if verbose(2) then	print ("publishPath Remote: ",publishPath) end
+	for relaynum,inv in pairs(RemoteRelays) do
+		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
+		if verbose(2) then	print ("OutputVal: ".. OutputVal) end
+		client:publish(publishPath, OutputVal, mqtt.QOS0)
+	end		
+	
+end
+
+function ActuateRelays(client)	
+	if verbose(9) then 
+		brf.PrintTable(LocalRelays)
+		brf.PrintTable(LocalSensors)
+		brf.PrintTable(RemoteRelays)
+		brf.PrintTable(RemoteSensors)
+	end		
+	local LclSensTemp,errLcl=getTemp("LOCAL",LocalSensors)
+	local termoSensTemp,errTermo=getTemp("TERMOKANDE",RemoteSensors)
+	if not (LclSensTemp and termoSensTemp) then
+		if not LclSensTemp then print ("errLcl: ",errLcl) end
+		if not termoSensTemp then print ("errTermo: ",errTermo) end
+		return
+	end
+	TempDiffThermoToLocal=termoSensTemp-LclSensTemp
+	if LastChangeTime == nil then
+		if verbose(7) then print("Starting Timekeeping") end
+		LastChangeTime=os.time()
+	
+	end
+	if verbose(9) then
+		print ("LclSensTemp: ".. LclSensTemp)
+		print ("termoSensTemp: ".. termoSensTemp)
+		print ("TempDiffThermoToLocal: ".. TempDiffThermoToLocal)
+		print ("Config.ChangeOverTempDiff.Rising: ",config.ChangeOverTempDiff.Rising) 
+		print ("Config.ChangeOverTempDiff.Falling: ",config.ChangeOverTempDiff.Falling) 
+		print ("Config.ChangeOverTempDiff.DebounceTime: ",config.ChangeOverTempDiff.DebounceTime) 
+	elseif verbose(7) then
+		print ("TempDiffThermoToLocal: ".. TempDiffThermoToLocal)
+		
+	end	
+	if RemoteState == 0 then
+		LastChangeTime=os.time()
+		RemoteState = 10
+	end
+	if RemoteState == 10 then
+		if TempDiffThermoToLocal>config.ChangeOverTempDiff.Rising then				
+			RemoteState = 100
+		elseif TempDiffThermoToLocal<config.ChangeOverTempDiff.Falling then	
+			RemoteState = 200
+		else
+			RemoteState = 0
+		end		
+	end	
+	if RemoteState == 100 then		
+		if TempDiffThermoToLocal<config.ChangeOverTempDiff.Rising then				
+			RemoteState = 0 
+		elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+			RemoteOn=true
+		end
+	elseif RemoteState == 200 then		
+		if TempDiffThermoToLocal>config.ChangeOverTempDiff.Falling then				
+			RemoteState = 0 		
+		elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+			RemoteOn=false
+		end
+	end
+	if verbose(1) then 
+		print ("RemoteState: ",RemoteState) 		
+	end
+	if verbose(9) then 
+		print ("debounceTimer: ", LastChangeTime+config.ChangeOverTempDiff.DebounceTime-os.time() )
+		print ("RemoteState: ",RemoteState) 		
+		print ("RemoteOn: ",RemoteOn) 
+	end
+	SetRelays(RemoteOn)
+
+--[[	if RemoteOn 
+
+local TempDiffThermoToLocal=0
+local LastChangeTime=0
+local RemoteOn=0
+	
+	
+	--[[
+	
+	local TempDiffThermoToLocal=0
+local LastChangeTime=0
+	--print whatever we have	
+	if WorkData["SENSOR"] and WorkData["SENSOR"]["LOCAL"] then
+		local SensorLocal=WorkData["SENSOR"]["LOCAL"]
+		
+		local data, pos, err = json.decode(SensorLocal)
+
+		if data and data["DS18B20-1"] then
+			local temp = data["DS18B20-1"].Temperature
+			print("Temperature of first sensor:", temp)
+		else
+			print("Failed to decode or missing sensor data:", err)
+		end
+		
+	else	
+		if verbose(8) then	print ("no data") end
+	end
+	--]]
+end	
+
 
 --\Local functions
 
 
 
+GetFromConfig()
 
 --start the mqtt client, restart if it chrashes
 eco.run(function(name)		
@@ -124,24 +331,22 @@ eco.run(function(name)
 		time.sleep(5)
 	end
 end,'BrfHeatControl_1')
---[[
+
 --resend the commands and ask for changes every poll time
 eco.run(function(name)
 	time.sleep(5)
 	if verbose(1) then print("Starting task eco2") end
 	while true do 		
-		ReadSensors(client)
+		--ReadSensors(client)
 		ActuateRelays(client)
 		time.sleep(config.PollTime)
 	end
 end,'BrfHeatControl_2')
 
 
+--[[
 
-
-
-
---cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
---stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)
---tele/TOPIC/LWT	from middleware	Returns the status of the middleware (Online/Offline)
+cmnd/TOPIC/POWER{id}	to middleware	Controls the specified relay (ON/OFF/TOGGLE)
+stat/TOPIC/POWER{id}	from middleware	Returns the state of the relay (ON/OFF)
+tele/TOPIC/LWT	from middleware	Returns the status of the middleware (Online/Offline)
 --]]

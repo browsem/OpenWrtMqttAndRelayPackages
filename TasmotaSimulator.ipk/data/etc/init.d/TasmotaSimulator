@@ -6,7 +6,6 @@ USE_PROCD=1
 
 
 start_service() {
-	#stop old socat before a restart
     procd_open_instance
     procd_set_param command /usr/bin/TasmotaSimulator
     procd_set_param respawn 3600 5 10  # Restart if it crashes: 1hr timeout, 5 retries, no delay

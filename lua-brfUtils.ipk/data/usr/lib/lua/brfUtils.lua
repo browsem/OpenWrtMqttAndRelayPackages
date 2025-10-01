@@ -7,6 +7,7 @@ DS18B20ID
 ExecuteToPID
 GetFullFilePathFromOpk
 FileExist
+FuncOnTable
 Indent
 Load_config
 MqttHeader
@@ -85,6 +86,13 @@ function M.GetFullFilePathFromOpk(Packagename,Filename)
 	return result
 end
 
+function M.FuncOnTable(tbl,FunctionToCall)	
+    for key, value in pairs(tbl) do
+        FunctionToCall(value)
+    end
+end
+
+
 function M.Indent(indentlevel,Chars)
 	--Set the defaults
 	indentlevel=indentlevel or 1
@@ -121,10 +129,10 @@ function M.Read_file(path)
     return content
 end
 
-function M.PrintTable(tbl)
+function M.PrintTable(tbl)		
     for key, value in pairs(tbl) do
         print(key, value)
-    end
+    end	
 end
 
 function M.Sleep(seconds)

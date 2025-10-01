@@ -7,38 +7,46 @@
 "password": "Enter your password",   
 "Topic_Strings":{
 	"Local":{ 
-		"Relays":"/LOCAL/POWER",
-		"RelaysToActuate":{
-			"comment":
-			"Relay nr as presented : reverse on/off",
-			"2":"NonInv"
-			"3":"NonInv"
+		"Relays":{
+			"Topic":"/LOCAL/POWER",
+			"Comment":"Relay nr as presented : reverse on/off",
+			"RelaysToActuate":{
+				"2":"NonInv",
+				"3":"NonInv"
+				}
 			},
-		"Sensors":"/LOCAL/SENSOR",
-		"SensorsToRead":{
-			"comment":
-			"sensor nr as presented : correction value to add to the measured temperatue",
-			"1":"0",
-			"2":"0"
-			},
+		"Sensors":{
+			"Topic":"/LOCAL/SENSOR",
+			"Comment":"sensor nr as presented : correction value to add to the measured temperatue",
+			"SensorsToRead":{
+				"1":"1",
+				"2":"-1"
+				}
+			}
 		},
 	"Remote":{
-		"Relays":"/THERMOKANDE/POWER",
-		"RelaysToActuate":{
-			"1":"NonInv"
-			},
-		"Sensors":"/THERMOKANDE/SENSOR",
-		"SensorsToRead":{
-			"sensor nr as presented : correction value to add to the measured temperatue",
-			"1":"0",
-			"2":"0"
+		"Relays":{
+			"Topic":"/TERMOKANDE/POWER",
+			"Comment":"Relay nr as presented : reverse on/off",			
+			"RelaysToActuate":{
+				"1":"NonInv"
+				}
+			},		
+		"Sensors":{
+			"Topic":"/TERMOKANDE/SENSOR",
+			"Comment":"sensor nr as presented : correction value to add to the measured temperatue",
+			"SensorsToRead":{
+				"1":"2",
+				"2":"-2"
+				}
 			}
 		}
 	},
 "ChangeOverTempDiff":{
-	"Rising":-3,
+	"DebounceTime":60
+	"Rising":3,
 	"Falling":-3
 	},
 "PollTime":20,
-"verbose":10,
+"verbose":8
 }
