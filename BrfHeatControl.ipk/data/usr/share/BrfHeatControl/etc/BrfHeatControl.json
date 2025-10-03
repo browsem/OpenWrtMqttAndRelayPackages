@@ -11,7 +11,7 @@
 			"Topic":"/LOCAL/POWER",
 			"Comment":"Relay nr as presented : reverse on/off",
 			"RelaysToActuate":{
-				"2":"NonInv",
+				"2":"Inv",
 				"3":"NonInv"
 				}
 			},
@@ -22,6 +22,20 @@
 				"1":"1",
 				"2":"-1"
 				}
+			},
+		"AppFeedback":{
+			"Topic":"/HeatControl",
+			"Comment":"sensor are presented to user",
+			"Comment_":"controls are presented to user",
+			"SensorsToRead":{
+				"LOCAL":"",
+				"TERMOKANDE":"",
+				"RelayState":""
+				"ManuelOnOff":""
+				},					
+			"Controls":{
+				"ManuelOnOff":""
+				}			
 			}
 		},
 	"Remote":{
@@ -43,10 +57,10 @@
 		}
 	},
 "ChangeOverTempDiff":{
-	"DebounceTime":60
-	"Rising":3,
-	"Falling":-3
+	"DebounceTime":15,
+	"Rising":1,
+	"Falling":-1
 	},
-"PollTime":20,
-"verbose":8
+"PollTime":10,
+"verbose":5
 }

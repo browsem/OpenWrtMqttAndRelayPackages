@@ -26,9 +26,14 @@ local LocalRelays ={}
 local LocalSensors ={}
 local RemoteRelays ={}
 local RemoteSensors ={}
+local AppFeedbackSensorsToRead={}
+local AppFeedbackControls={}
+
 local TempDiffThermoToLocal=0
+local ManuelOnOff=-1 -- default to auto
 local LastChangeTime=nil
 local RemoteState=0
+local PossibleRemoteStates=nil
 local RemoteOn=0
 
 --\Local global vars
@@ -64,19 +69,21 @@ client:on({
 		local topicStrings = config["Topic_Strings"]
 		local SubscribeStr=""
 		local SubData
+		local counter=0
 		for location, data in pairs(topicStrings) do			
-			if type(data) == "table" then
+			if type(data) == "table" then				
 				if verbose(10) then brf.PrintTable(data) end
-				if data["Relays"]  then										
-					SubscribeStr="stat" .. data["Relays"].Topic
-					if verbose(10) then print("1 " ..  SubscribeStr) end
-					client:subscribe(SubscribeStr)
-				end
-				if data["Sensors"] then
-					SubscribeStr="stat" .. data["Sensors"].Topic					
-					if verbose(10) then print("2 " .. SubscribeStr) end
-					client:subscribe(SubscribeStr)
-				end
+				for Types, topic in pairs(data) do									
+					counter=counter+1
+					if Types=="AppFeedback" then
+						SubscribeStr="cmnd" .. data[Types].Topic .."/+"
+					else
+						SubscribeStr="stat" .. data[Types].Topic
+					end
+					if verbose(7) then print("Types: " ..  Types) end
+					if verbose(5) then print(counter ..": " ..  SubscribeStr) end
+					client:subscribe(SubscribeStr, mqtt.QOS0)	
+				end			
 			end
 			
 		end
@@ -95,8 +102,6 @@ client:on({
 
 })
 
-
-
 --Local functions
 
 function GetFromConfig()
@@ -104,6 +109,8 @@ LocalRelays=config.Topic_Strings.Local.Relays.RelaysToActuate
 LocalSensors=config.Topic_Strings.Local.Sensors.SensorsToRead
 RemoteRelays=config.Topic_Strings.Remote.Relays.RelaysToActuate
 RemoteSensors=config.Topic_Strings.Remote.Sensors.SensorsToRead
+AppFeedbackSensorsToRead=config.Topic_Strings.Local.AppFeedback.SensorsToRead
+AppFeedbackControls=config.Topic_Strings.Local.AppFeedback.Controls
 
 	if verbose(10) then 
 		brf.PrintTable(LocalRelays)
@@ -114,24 +121,38 @@ RemoteSensors=config.Topic_Strings.Remote.Sensors.SensorsToRead
 end
 
 function ReadMqtt(pkt)
-	if verbose(10) then 
+	local LclVerbose=5
+	if verbose(LclVerbose+1) then 
 		print('Received message on topic:', pkt.topic) 			
 		print('Payload:', pkt.payload) 
 	end		
 	local cmd, place, Type = string.match(pkt.topic, "([^/]+)/([^/]+)/([^/]+)")
-	if verbose(10) then 
+	if verbose(LclVerbose+1) then 	
 		print ("cmd: " .. cmd)
 		print ("place: " .. place )
 		print ("Type: " .. Type)
-		print('Payload:', pkt.payload) 
+		print('Payload:', pkt.payload) 	
 	end
 	--make sure theres room for the data
 	-- Ensure WorkData[Type] exists
-	WorkData[Type] = WorkData[Type] or {}
-	
-	WorkData[Type][place] = pkt.payload
-	if verbose(9) then print ( "[Type: " .. Type .. "][place: " .. place .. "]: " .. WorkData[Type][place]) end
-	
+	if cmd=="stat" then
+		WorkData[Type] = WorkData[Type] or {}	
+		WorkData[Type][place] = pkt.payload
+		if verbose(LclVerbose+1) then print ( "[Type: " .. Type .. "][place: " .. place .. "]: " .. WorkData[Type][place]) end
+	elseif cmd=="cmnd" then
+		if verbose(LclVerbose) then 
+			print ( "Incomming Cmd [Type: " .. Type .. "][place: " .. place .." Payload: " ..pkt.payload ) 
+		end
+		if Type=="ManuelOnOff" and  place=="HeatControl" then
+			local LastManuelOnOffState = ManuelOnOff			
+			ManuelOnOff=tonumber(pkt.payload)
+			if	LastManuelOnOffState ~= ManuelOnOff then
+				--Force the update now
+				HeatHandling(client)
+			end
+		end
+		
+	end
 end
 
 function getTemp(place,SensorConfig)
@@ -181,11 +202,11 @@ function HandleInv(RemoteOn,inv)
 	local OutputVal = "off"
 	if inv=="Inv" then
 		
-		if not RemoteOn then
+		if RemoteOn==0 then
 			OutputVal = "on"
 		end
 	else
-		if RemoteOn then
+		if RemoteOn==1 then
 			OutputVal = "on"
 		end
 	end		
@@ -193,7 +214,8 @@ function HandleInv(RemoteOn,inv)
 end
 
 function SetRelays(RemoteOn)
-	if verbose(2) then print ("Turning relays: ",RemoteOn) end
+	local LclVerbose=7
+	if verbose(LclVerbose) then print ("Turning relays: ",RemoteOn) end
 	if verbose(9) then
 		brf.PrintTable(LocalRelays)
 		brf.PrintTable(RemoteRelays)
@@ -201,24 +223,33 @@ function SetRelays(RemoteOn)
 	local publishPath =""
 	local OutputVal="off"
 	publishPath ='cmnd'..config.Topic_Strings.Local.Relays.Topic
-	if verbose(2) then	print ("publishPath LOCAL: ",publishPath) end
+	if verbose(LclVerbose) then	print ("publishPath LOCAL: ",publishPath) end
 	for relaynum,inv in pairs(LocalRelays) do
 		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
-		if verbose(2) then	print ("OutputVal: ".. OutputVal) end
+		if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
 		client:publish(publishPath, OutputVal, mqtt.QOS0)
 	end		
 	
 	publishPath ='cmnd'..config.Topic_Strings.Remote.Relays.Topic
-	if verbose(2) then	print ("publishPath Remote: ",publishPath) end
+	if verbose(LclVerbose) then	print ("publishPath Remote: ",publishPath) end
 	for relaynum,inv in pairs(RemoteRelays) do
 		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
-		if verbose(2) then	print ("OutputVal: ".. OutputVal) end
+		if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
 		client:publish(publishPath, OutputVal, mqtt.QOS0)
 	end		
 	
 end
 
-function ActuateRelays(client)	
+
+function CreateLookUp(list)
+local lclVar={}
+	for _,i in ipairs(list) do
+		lclVar[i]=true
+	end
+	return lclVar
+end
+
+function HeatHandling(client)	
 	if verbose(9) then 
 		brf.PrintTable(LocalRelays)
 		brf.PrintTable(LocalSensors)
@@ -226,7 +257,8 @@ function ActuateRelays(client)
 		brf.PrintTable(RemoteSensors)
 	end		
 	local LclSensTemp,errLcl=getTemp("LOCAL",LocalSensors)
-	local termoSensTemp,errTermo=getTemp("TERMOKANDE",RemoteSensors)
+	local termoSensTemp,errTermo=getTemp("TERMOKANDE",RemoteSensors)	
+	
 	if not (LclSensTemp and termoSensTemp) then
 		if not LclSensTemp then print ("errLcl: ",errLcl) end
 		if not termoSensTemp then print ("errTermo: ",errTermo) end
@@ -249,70 +281,90 @@ function ActuateRelays(client)
 		print ("TempDiffThermoToLocal: ".. TempDiffThermoToLocal)
 		
 	end	
-	if RemoteState == 0 then
-		LastChangeTime=os.time()
-		RemoteState = 10
-	end
-	if RemoteState == 10 then
-		if TempDiffThermoToLocal>config.ChangeOverTempDiff.Rising then				
-			RemoteState = 100
-		elseif TempDiffThermoToLocal<config.ChangeOverTempDiff.Falling then	
-			RemoteState = 200
-		else
+	PossibleRemoteStates=CreateLookUp({0,10,100,200})
+	if ManuelOnOff==-1 then 
+		--running in auto
+		if not PossibleRemoteStates[RemoteState] then
+			--make sure we have a possible state
 			RemoteState = 0
-		end		
-	end	
-	if RemoteState == 100 then		
-		if TempDiffThermoToLocal<config.ChangeOverTempDiff.Rising then				
-			RemoteState = 0 
-		elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
-			RemoteOn=true
 		end
-	elseif RemoteState == 200 then		
-		if TempDiffThermoToLocal>config.ChangeOverTempDiff.Falling then				
-			RemoteState = 0 		
-		elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
-			RemoteOn=false
+		
+		if RemoteState == 0 then
+			LastChangeTime=os.time()
+			RemoteState = 10
+		end
+		if RemoteState == 10 then
+			if TempDiffThermoToLocal>config.ChangeOverTempDiff.Rising then				
+				RemoteState = 100
+			elseif TempDiffThermoToLocal<config.ChangeOverTempDiff.Falling then	
+				RemoteState = 200
+			else
+				RemoteState = 0
+			end		
+		end	
+		if RemoteState == 100 then		
+			if TempDiffThermoToLocal<config.ChangeOverTempDiff.Rising then				
+				RemoteState = 0 
+			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+				RemoteOn=1
+			end
+		elseif RemoteState == 200 then		
+			if TempDiffThermoToLocal>config.ChangeOverTempDiff.Falling then				
+				RemoteState = 0 		
+			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+				RemoteOn=0
+			end
+		end
+	else
+		--Running in manuel
+		if ManuelOnOff==0 then
+			RemoteState = 1000
+			RemoteOn=0
+		elseif ManuelOnOff==1 then
+			RemoteState = 1001
+			RemoteOn=1
 		end
 	end
 	if verbose(1) then 
 		print ("RemoteState: ",RemoteState) 		
 	end
-	if verbose(9) then 
+	if verbose(7) then 
 		print ("debounceTimer: ", LastChangeTime+config.ChangeOverTempDiff.DebounceTime-os.time() )
 		print ("RemoteState: ",RemoteState) 		
 		print ("RemoteOn: ",RemoteOn) 
 	end
+	
 	SetRelays(RemoteOn)
-
---[[	if RemoteOn 
-
-local TempDiffThermoToLocal=0
-local LastChangeTime=0
-local RemoteOn=0
-	
-	
-	--[[
-	
-	local TempDiffThermoToLocal=0
-local LastChangeTime=0
-	--print whatever we have	
-	if WorkData["SENSOR"] and WorkData["SENSOR"]["LOCAL"] then
-		local SensorLocal=WorkData["SENSOR"]["LOCAL"]
-		
-		local data, pos, err = json.decode(SensorLocal)
-
-		if data and data["DS18B20-1"] then
-			local temp = data["DS18B20-1"].Temperature
-			print("Temperature of first sensor:", temp)
-		else
-			print("Failed to decode or missing sensor data:", err)
+	publishPath ='stat'..config.Topic_Strings.Local.AppFeedback.Topic	
+	--Publish the found temperatures, and states		
+	for topic in pairs(AppFeedbackSensorsToRead) do
+		local TotalPP=publishPath .."/" .. topic
+		if verbose(8) then	print ("TotalPP: ",TotalPP) end
+		OutputVal=nil
+		if topic=="TERMOKANDE" then
+			OutputVal=termoSensTemp			
+		elseif topic=="LOCAL" then
+			OutputVal=LclSensTemp			
+		elseif topic=="ManuelOnOff" then
+			OutputVal=ManuelOnOff
+		elseif topic=="RelayState" then
+			OutputVal=RemoteOn
+		end		
+		if OutputVal then
+			OutputVal=tostring(OutputVal)
+			if verbose(8) then
+				print ("Topic: ",topic .. " has a value of : " ..  OutputVal) 
+			end
+			client:publish(TotalPP, OutputVal, mqtt.QOS0)
 		end
-		
-	else	
-		if verbose(8) then	print ("no data") end
 	end
-	--]]
+--[[
+
+
+
+--]]
+
+
 end	
 
 
@@ -338,7 +390,7 @@ eco.run(function(name)
 	if verbose(1) then print("Starting task eco2") end
 	while true do 		
 		--ReadSensors(client)
-		ActuateRelays(client)
+		HeatHandling(client)
 		time.sleep(config.PollTime)
 	end
 end,'BrfHeatControl_2')
