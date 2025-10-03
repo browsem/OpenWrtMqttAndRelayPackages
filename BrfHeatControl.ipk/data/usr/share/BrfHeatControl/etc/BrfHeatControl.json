@@ -13,7 +13,12 @@
 			"RelaysToActuate":{
 				"2":"Inv",
 				"3":"NonInv"
-				}
+				},
+			"Timer":{
+				"Comment":"From signal change til relay change",			
+				"on":0,
+				"off":60
+				}			
 			},
 		"Sensors":{
 			"Topic":"/LOCAL/SENSOR",
@@ -30,8 +35,9 @@
 			"SensorsToRead":{
 				"LOCAL":"",
 				"TERMOKANDE":"",
-				"RelayState":""
-				"ManuelOnOff":""
+				"RelayState":""	,			
+				"ManuelOnOff":"",
+				"RemoteState":""
 				},					
 			"Controls":{
 				"ManuelOnOff":""
@@ -44,7 +50,12 @@
 			"Comment":"Relay nr as presented : reverse on/off",			
 			"RelaysToActuate":{
 				"1":"NonInv"
-				}
+				},
+			"Timer":{
+				"Comment":"From signal change til relay change",			
+				"on":10,
+				"off":0
+				}			
 			},		
 		"Sensors":{
 			"Topic":"/TERMOKANDE/SENSOR",

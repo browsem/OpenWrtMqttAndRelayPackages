@@ -35,6 +35,9 @@ local LastChangeTime=nil
 local RemoteState=0
 local PossibleRemoteStates=nil
 local RemoteOn=0
+local LastRemoteOn=0
+local AllRelaysOk=0
+local RelayChangeStartTime=0
 
 --\Local global vars
 
@@ -213,29 +216,92 @@ function HandleInv(RemoteOn,inv)
 	return OutputVal
 end
 
-function SetRelays(RemoteOn)
+
+function StartRelaysOnTime()
+	local TheTimeIsNow=os.time()
+	local ChangeTimer
+	local RelayChgTime_1 = -20
+	local RelayChgTime_2 = -20
+	local AllRelaysOk_1 = -20
+	local AllRelaysOk_2 = -20
+	CmdVal=RemoteOn
+	if LastRemoteOn ~= CmdVal or RelayChangeStartTime==0 then
+		RelayChangeStartTime=os.time()
+		LastRemoteOn=CmdVal
+	end
+	if verbose(3) then
+		print ("CmdVal: ".. CmdVal)
+		print ("LastRemoteOn: ".. LastRemoteOn)
+		print ("TheTimeIsNow: ",TheTimeIsNow)
+		print ("RelayChangeStartTime: ",RelayChangeStartTime)
+	end
+	
+	if CmdVal==1 then
+		if verbose(7) then
+			print("Local On: " .. config.Topic_Strings.Local.Relays.Timer.on)
+			print("Remote On: " .. config.Topic_Strings.Remote.Relays.Timer.on)
+		end
+		RelayChgTime_1=RelayChangeStartTime+config.Topic_Strings.Local.Relays.Timer.on
+		RelayChgTime_2=RelayChangeStartTime+config.Topic_Strings.Remote.Relays.Timer.on
+	else
+		if verbose(7) then
+			print("Local Off: " .. config.Topic_Strings.Local.Relays.Timer.off)
+			print("Remote Off: " .. config.Topic_Strings.Remote.Relays.Timer.off)
+		end
+		RelayChgTime_1=RelayChangeStartTime+config.Topic_Strings.Local.Relays.Timer.off
+		RelayChgTime_2=RelayChangeStartTime+config.Topic_Strings.Remote.Relays.Timer.off
+	end
+	if 	TheTimeIsNow>=RelayChgTime_1 then
+		SetRelays(CmdVal,"Valves")
+		AllRelaysOk_1=CmdVal
+	end
+	if TheTimeIsNow>= RelayChgTime_2 then
+		SetRelays(CmdVal,"Pump")
+		AllRelaysOk_2=CmdVal
+	end
+	AllRelaysOk=AllRelaysOk_1==CmdVal and  AllRelaysOk_2==CmdVal
+    if verbose(2) then
+		if AllRelaysOk_1==CmdVal then
+			print ("Local is: ",CmdVal)
+		else
+			print ("Local will change in: ",RelayChgTime_1-TheTimeIsNow )
+		end
+		if AllRelaysOk_2==CmdVal then
+			print ("remote is: ",CmdVal)
+		else
+			print ("remote will change in: ",RelayChgTime_2-TheTimeIsNow )
+		end
+		print("AllRelaysOk: ",AllRelaysOk)
+	end
+end
+
+function SetRelays(CmdValIn,subject)
+	
 	local LclVerbose=7
-	if verbose(LclVerbose) then print ("Turning relays: ",RemoteOn) end
+	if verbose(LclVerbose) then print ("Turning relays: ",CmdValIn) end
 	if verbose(9) then
 		brf.PrintTable(LocalRelays)
 		brf.PrintTable(RemoteRelays)
 	end
 	local publishPath =""
 	local OutputVal="off"
-	publishPath ='cmnd'..config.Topic_Strings.Local.Relays.Topic
-	if verbose(LclVerbose) then	print ("publishPath LOCAL: ",publishPath) end
-	for relaynum,inv in pairs(LocalRelays) do
-		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
-		if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
-		client:publish(publishPath, OutputVal, mqtt.QOS0)
-	end		
-	
-	publishPath ='cmnd'..config.Topic_Strings.Remote.Relays.Topic
-	if verbose(LclVerbose) then	print ("publishPath Remote: ",publishPath) end
-	for relaynum,inv in pairs(RemoteRelays) do
-		OutputVal=relaynum .. " " .. HandleInv(RemoteOn,inv)
-		if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
-		client:publish(publishPath, OutputVal, mqtt.QOS0)
+	if subject =="Valves" then
+		publishPath ='cmnd'..config.Topic_Strings.Local.Relays.Topic	
+		if verbose(LclVerbose) then	print ("publishPath LOCAL: ",publishPath) end
+
+		for relaynum,inv in pairs(LocalRelays) do
+			OutputVal=relaynum .. " " .. HandleInv(CmdValIn,inv)
+			if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
+			client:publish(publishPath, OutputVal, mqtt.QOS0)
+		end		
+	elseif subject =="Pump" then
+		publishPath ='cmnd'..config.Topic_Strings.Remote.Relays.Topic
+		if verbose(LclVerbose) then	print ("publishPath Remote: ",publishPath) end
+		for relaynum,inv in pairs(RemoteRelays) do
+			OutputVal=relaynum .. " " .. HandleInv(CmdValIn,inv)
+			if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
+			client:publish(publishPath, OutputVal, mqtt.QOS0)
+		end		
 	end		
 	
 end
@@ -247,6 +313,15 @@ local lclVar={}
 		lclVar[i]=true
 	end
 	return lclVar
+end
+
+function TimeStateHandler(RemoteState,RemoteOn,LastRemoteOn)
+	if RemoteOn~=LastRemoteOn then
+		RemoteState=RemoteState+10
+	elseif AllRelaysOk then
+		RemoteState=RemoteState+20
+	end
+	return RemoteState
 end
 
 function HeatHandling(client)	
@@ -280,8 +355,8 @@ function HeatHandling(client)
 	elseif verbose(7) then
 		print ("TempDiffThermoToLocal: ".. TempDiffThermoToLocal)
 		
-	end	
-	PossibleRemoteStates=CreateLookUp({0,10,100,200})
+	end		
+	PossibleRemoteStates=CreateLookUp({0,10,100,110,120,200,210,220,1000,1010,1020,1100,1110,1120})	
 	if ManuelOnOff==-1 then 
 		--running in auto
 		if not PossibleRemoteStates[RemoteState] then
@@ -302,27 +377,38 @@ function HeatHandling(client)
 				RemoteState = 0
 			end		
 		end	
-		if RemoteState == 100 then		
+		if 100<=RemoteState and  RemoteState < 200 then		
 			if TempDiffThermoToLocal<config.ChangeOverTempDiff.Rising then				
 				RemoteState = 0 
-			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<=os.time() then			
 				RemoteOn=1
+				RemoteState=100
+				RemoteState=TimeStateHandler(RemoteState,RemoteOn,LastRemoteOn)				
 			end
-		elseif RemoteState == 200 then		
+		elseif 200<=RemoteState and  RemoteState < 300 then		
 			if TempDiffThermoToLocal>config.ChangeOverTempDiff.Falling then				
 				RemoteState = 0 		
-			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<os.time() then
+			elseif LastChangeTime+config.ChangeOverTempDiff.DebounceTime<=os.time() then
 				RemoteOn=0
+				RemoteState=200
+				RemoteState=TimeStateHandler(RemoteState,RemoteOn,LastRemoteOn)				
 			end
+		elseif RemoteState == 1010 or RemoteState == 1011 then
+			RemoteState = 10
 		end
 	else
 		--Running in manuel
 		if ManuelOnOff==0 then
 			RemoteState = 1000
+			RemoteState=TimeStateHandler(RemoteState,RemoteOn,LastRemoteOn)				
 			RemoteOn=0
 		elseif ManuelOnOff==1 then
-			RemoteState = 1001
+			RemoteState = 1100
+			RemoteState=TimeStateHandler(RemoteState,RemoteOn,LastRemoteOn)				
 			RemoteOn=1
+		else
+			--Restore to auto, if someone is playing with things they shouldn't
+			ManuelOnOff=-1
 		end
 	end
 	if verbose(1) then 
@@ -333,8 +419,9 @@ function HeatHandling(client)
 		print ("RemoteState: ",RemoteState) 		
 		print ("RemoteOn: ",RemoteOn) 
 	end
-	
-	SetRelays(RemoteOn)
+	--[[ We dont set the relays here, we do it in another task
+	--SetRelays(RemoteOn)
+	--]]
 	publishPath ='stat'..config.Topic_Strings.Local.AppFeedback.Topic	
 	--Publish the found temperatures, and states		
 	for topic in pairs(AppFeedbackSensorsToRead) do
@@ -349,10 +436,12 @@ function HeatHandling(client)
 			OutputVal=ManuelOnOff
 		elseif topic=="RelayState" then
 			OutputVal=RemoteOn
+		elseif  topic=="RemoteState" then
+			OutputVal=RemoteState
 		end		
 		if OutputVal then
 			OutputVal=tostring(OutputVal)
-			if verbose(8) then
+			if verbose(5) then
 				print ("Topic: ",topic .. " has a value of : " ..  OutputVal) 
 			end
 			client:publish(TotalPP, OutputVal, mqtt.QOS0)
@@ -384,14 +473,20 @@ eco.run(function(name)
 	end
 end,'BrfHeatControl_1')
 
+
 --resend the commands and ask for changes every poll time
 eco.run(function(name)
 	time.sleep(5)
+	local stTime=os.time()-config.PollTime
 	if verbose(1) then print("Starting task eco2") end
 	while true do 		
 		--ReadSensors(client)
-		HeatHandling(client)
-		time.sleep(config.PollTime)
+		if os.time()>=stTime+config.PollTime then
+			stTime=os.time()
+			HeatHandling(client)			
+		end		
+		StartRelaysOnTime()
+		time.sleep(1)		
 	end
 end,'BrfHeatControl_2')
 
