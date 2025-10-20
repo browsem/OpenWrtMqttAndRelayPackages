@@ -115,7 +115,7 @@ function readnPublishTemperatures(client,Sensornum)
 	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
 	file.close(fd)
 	
-	client:publish('stat'..config.Topic_String , result, mqtt.QOS0)
+	client:publish('tele'..config.Topic_String , result, mqtt.QOS0)
 	if verbose(2) then print('Published:\n'.. result) end			
 end
 

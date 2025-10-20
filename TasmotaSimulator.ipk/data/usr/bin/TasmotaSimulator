@@ -68,16 +68,22 @@ local function readnPublishRelayStates(client,RelayNum)
 	
 	--relays = relays .. brf.Indent(indentlevel) .. "{\n"
 	--indentlevel = indentlevel +1	
-	for line in result:gmatch("[^\r\n]+") do		
+	for line in result:gmatch("[^\r\n]+") do
 		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
 		if relay and state then
+			state=string.upper(state)
 			if idx ~= 0 then			
 			relays = relays ..",\n"
 			end
-			--print (relays)
-			--print ('"' .. relay .. '"')
-			--print ('"' .. state .. '"')
-			--relays[relay] = state	
+			local RelayNumber = string.match(relay, "%d+$")
+			local TasmotaRelayPub='stat'..config.Topic_String .."/POWER" .. RelayNumber
+			if verbose(5) then
+				print (relays)
+				print ('"' .. relay .. '"')
+				print ('"' .. state .. '"')
+				print ("TasmotaRelayPub: " .. TasmotaRelayPub)
+			end
+			client:publish(TasmotaRelayPub, state, mqtt.QOS0)
 			relays = relays .. brf.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
 			idx=idx+1
 		end		
@@ -154,7 +160,7 @@ local function Sensors(client)
 	--remove the last comma
 	result= result:gsub(",%s*$", "\n}")	
 	if verbose(5) then print (result) end 
-	local publishPath ='stat'..config.Topic_String .."/SENSOR"
+	local publishPath ='tele'..config.Topic_String .."/SENSOR"
 	client:publish(publishPath , result, mqtt.QOS0)
 	if verbose(2) then 
 		print('Published:\n'.. result) 
@@ -167,11 +173,11 @@ local function publishAll(client)
 	Sensors(client)	
 end
 
-local function SetReylay(payload)
-	local number = payload:match("%d+")
+local function SetReylay(number,payload)
 	local cmd = payload:match("on") or payload:match("off")
 	local shCmd="sh " ..relayPath  .. " ".. number .. " " .. cmd 
 	if verbose(5) then
+		print (number)
 		print ("shCmd :" .. shCmd)
 	end
 	if cmd then
@@ -223,19 +229,33 @@ client:on({
 			print('Payload:', pkt.payload)  
 		end
 		local prefix, device, subject = pkt.topic:match("([^/]+)/([^/]+)/([^/]+)")
-		if verbose(2) then 
+		local number = subject:match("%d+") or -1
+		if subject=="POWER" then
+			number = 1
+		end
+		local cmd = pkt.payload:match("on") or pkt.payload:match("off") or pkt.payload:match("1") or pkt.payload:match("0")
+		if cmd == "1" then
+			cmd ="on"
+		elseif cmd == "0" then
+			cmd ="off"
+		end
+		if verbose(5) then 
 			print("Prefix:", prefix)
 			print("Device:", device)
 			print("subject:", subject)
+			print("number:", number)
+			print("cmd:", cmd)
+		end
+		local NumNum=tonumber(number)
+		if (0<NumNum) and  (NumNum<=config.NumberOfRelays) then
+			if subject=="POWER" .. number then
+				--were handling relays							
+				if cmd then
+					SetReylay(number,cmd)							
+				end			
+			end		
 		end		
-		if subject=="POWER" then
-			--were handling relays			
-			local number = pkt.payload:match("%d+") or -1
-			local cmd = pkt.payload:match("on") or pkt.payload:match("off")
-			if cmd then
-				SetReylay(pkt.payload)							
-			end			
-		end		
+
 		--return read and publish sensors		
 		publishAll(client)
 		--os.exit()

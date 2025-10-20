@@ -56,9 +56,14 @@ local function readnPublishRelayStates(client,RelayNum)
 	for line in result:gmatch("[^\r\n]+") do		
 		local relay,state = line:match("(Relay%s%d+):%s*(%a+)")
 		if relay and state then
+			state=string.upper(state)
 			if idx ~= 0 then			
 			relays = relays ..",\n"
 			end
+			local RelayNumber = string.match(relay, "%d+$")
+			local TasmotaRelayPub='stat'..config.Topic_String .."/POWER" .. RelayNumber
+			client:publish(TasmotaRelayPub, state, mqtt.QOS0)
+			
 			relays = relays .. brf.Indent(indentlevel) .. '"'.. relay .. '":"'..state..'"'						
 			idx=idx+1
 		end		

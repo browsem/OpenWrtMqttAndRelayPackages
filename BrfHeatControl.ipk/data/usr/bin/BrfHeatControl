@@ -81,7 +81,7 @@ client:on({
 					if Types=="AppFeedback" then
 						SubscribeStr="cmnd" .. data[Types].Topic .."/+"
 					else
-						SubscribeStr="stat" .. data[Types].Topic
+						SubscribeStr="tele" .. data[Types].Topic
 					end
 					if verbose(7) then print("Types: " ..  Types) end
 					if verbose(5) then print(counter ..": " ..  SubscribeStr) end
@@ -138,7 +138,7 @@ function ReadMqtt(pkt)
 	end
 	--make sure theres room for the data
 	-- Ensure WorkData[Type] exists
-	if cmd=="stat" then
+	if cmd=="tele" then
 		WorkData[Type] = WorkData[Type] or {}	
 		WorkData[Type][place] = pkt.payload
 		if verbose(LclVerbose+1) then print ( "[Type: " .. Type .. "][place: " .. place .. "]: " .. WorkData[Type][place]) end
@@ -284,23 +284,31 @@ function SetRelays(CmdValIn,subject)
 		brf.PrintTable(RemoteRelays)
 	end
 	local publishPath =""
+	local publishPath_1 =""
 	local OutputVal="off"
 	if subject =="Valves" then
 		publishPath ='cmnd'..config.Topic_Strings.Local.Relays.Topic	
-		if verbose(LclVerbose) then	print ("publishPath LOCAL: ",publishPath) end
 
 		for relaynum,inv in pairs(LocalRelays) do
-			OutputVal=relaynum .. " " .. HandleInv(CmdValIn,inv)
-			if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
-			client:publish(publishPath, OutputVal, mqtt.QOS0)
+			publishPath_1=publishPath..relaynum
+			OutputVal=HandleInv(CmdValIn,inv)
+			if verbose(LclVerbose) then	
+				print ("publishPath LOCAL: ",publishPath_1)
+				print ("OutputVal: ".. OutputVal) 
+			end
+			client:publish(publishPath_1, OutputVal, mqtt.QOS0)
 		end		
 	elseif subject =="Pump" then
 		publishPath ='cmnd'..config.Topic_Strings.Remote.Relays.Topic
-		if verbose(LclVerbose) then	print ("publishPath Remote: ",publishPath) end
+		
 		for relaynum,inv in pairs(RemoteRelays) do
-			OutputVal=relaynum .. " " .. HandleInv(CmdValIn,inv)
-			if verbose(LclVerbose) then	print ("OutputVal: ".. OutputVal) end
-			client:publish(publishPath, OutputVal, mqtt.QOS0)
+			publishPath_1=publishPath..relaynum
+			OutputVal=HandleInv(CmdValIn,inv)
+			if verbose(LclVerbose) then	
+				print ("publishPath Remote: ",publishPath_1) 
+				print ("OutputVal: ".. OutputVal) 
+			end
+			client:publish(publishPath_1, OutputVal, mqtt.QOS0)
 		end		
 	end		
 	

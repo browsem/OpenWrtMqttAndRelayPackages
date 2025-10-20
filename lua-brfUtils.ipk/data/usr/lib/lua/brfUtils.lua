@@ -152,6 +152,7 @@ function M.Timestamp()
 	local handle = io.popen("date -Iseconds")
 	local timestamp = handle:read("*a"):gsub("\n", "")
 	handle:close()
+	timestamp=timestamp:match("^(.-)%+")
 	return timestamp
 end
 
