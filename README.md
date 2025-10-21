@@ -12,15 +12,13 @@ Using Mqtt to tie it together and lua as the main scripting language. the reason
 
 Steps  
 1: Get crelay wrapped into mqtt  
-Status: almost done  
+Status: done, not tested enough
 2: Get the Tasmota temperature/relay data, and create a simulator for the non hardware machine.  
-Status: not started  
+Status: done, not tested enough
 3: Create another wrapper, to get the arduino connected temperature sensors into mqtt on the router.  
-Status: not started, can probably use the tasmota simulator and the crelay wrapper as examples  
-4: Create the logic, in another lua client.  
-Status: not started  
+Status: done, not tested enough
+4: Create the heat control logic, in another lua client. 
+Status: done
+Seems to run fine, the package is brfHeatControl 
 5: bind the mqtt to a phone app ??  
-Status: nice to have  
-6: Throw the shit away, and use a real plc instead.  
-Status: nice to have  
-
+Status: I bound the heatcontrol client to IOT MQtt
