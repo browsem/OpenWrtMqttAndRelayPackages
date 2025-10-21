@@ -1,6 +1,6 @@
 Package: BrfHeatControl
 Version: 0.8
-Depends: crelay, lua, lua-eco, lua-eco-mqtt, lua-brfUtils, dkjson
+Depends: SerialMqttArduinoDs18b20_Relays, lua, lua-eco, lua-eco-mqtt, lua-brfUtils, dkjson
 Section: utils
 Priority: optional
 Architecture: all

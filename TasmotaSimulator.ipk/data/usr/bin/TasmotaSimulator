@@ -193,7 +193,7 @@ end
 --Set the sensorID
 sensorId=brf.DS18B20ID(config.NumberOfSensors,config.RandomSensorIdSeed)
 --Get path to cRelay.sh
-relayPath = brf.GetFullFilePathFromOpk('cRelayMqttWrapperService','cRelaySimulator.sh')
+relayPath = brf.GetFullFilePathFromOpk('cRelaySimulator','cRelaySimulator.sh')
 --add local file vars
 relayPath = relayPath .." -n "..  config.NumberOfRelays .." -f ".. config.STATE_FILE 
 

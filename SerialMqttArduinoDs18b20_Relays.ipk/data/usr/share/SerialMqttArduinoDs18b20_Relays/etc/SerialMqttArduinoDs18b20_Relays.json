@@ -22,6 +22,7 @@
 		"temperature_Min":45,
 		"temperature_Channel_Max_Deviation":5,
 		"temperature_from_zero_to_min_time":30,
+		"NrOfRelays" : 4,
 		"Sim_Comment1": "0: Run against the real arduino",
 		"Sim_Comment2": "1: else run a simple socat simulator",
 		"Simulated":0,

@@ -14,7 +14,7 @@ local brf =  require 'brfUtils'
 
 
 --Read config data from config file
-local config = brf.Load_config("/etc/Serial2MqttArduinoDs18b20.json")
+local config = brf.Load_config("/etc/SerialMqttArduinoDs18b20_Relays.json")
 
 
 --INTERNAL "GLOBAL" VARAIABLES SECTION
@@ -68,7 +68,7 @@ end
 
 function readnPublishTemperatures(client,Sensornum)
 	Sensornum = tonumber(Sensornum) or -1 -- -1 = all
-	local command = Sensornum .. "\n"
+	local command = "S" .. Sensornum .. "\n"
 	
 	local fd= SerialPort(serialPortPath)
 	if verbose(3) then
@@ -119,6 +119,101 @@ function readnPublishTemperatures(client,Sensornum)
 	if verbose(2) then print('Published:\n'.. result) end			
 end
 
+
+function Set_n_GetRelays(RelayNumber,cmd)
+	RelayNumber=tonumber(RelayNumber) or -1
+	cmd = cmd or "-1"
+	if RelayNumber==-1 then
+		for idx =1,config.sim_data.NrOfRelays, 1 do
+			if verbose(5) then 
+				print('Recursive idx: ',idx) 
+				print('Recursive cmd: ',cmd) 
+			end	
+			Set_n_GetRelays(idx,cmd)
+		end
+		if verbose(2) then print('Recursive done') end					
+	else
+		if RelayNumber>0 and RelayNumber<=config.sim_data.NrOfRelays then
+			local command = "R" .. RelayNumber .."_".. cmd .."\n"	
+			local fd= SerialPort(serialPortPath)
+			if verbose(2) then
+				print("File descriptor: ",fd)					
+				print('RelayNumber: ',RelayNumber) 
+				print('command: ',command) 
+				print()
+			end	
+			local ok, eco = file.writefile(serialPortPath, command)
+			--The data to the serial port
+			if not ok then
+				print("Failed to send command: "..command.. " Result: " , err) 
+			else
+			if verbose(2) then
+				print("Sent command: "..command.. " Result: " , err)
+			end
+	end
+		end
+	end
+end
+	
+	
+	
+	
+	
+	
+	
+--[[	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	local b = bufio.new(fd)
+	-- Read a line (ends with \n)
+	--local line, err = b:readline()
+	--local line, err = b:read('l')
+	local timeout = 2
+	local result = brf.MqttHeader()
+	local LineCount=0
+	while true do
+	--local line, err = b:read('L')		
+		local line, err = b:read('L',timeout)
+		if line then						
+			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
+			LineCount=LineCount+1
+				
+			 if verbose(11) then print("Received line:", line) end
+		elseif err == "timeout" then
+			if verbose(5) then  print("All data read") end 
+			break  -- no more data within timeout
+		else
+			print("Read error:", err)
+			break
+		end
+	end
+	--remove the last comma
+	result= result:gsub(",%s*$", "\n}")
+	
+	if verbose(5) then print (result) end 
+	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
+	file.close(fd)
+	
+	client:publish('tele'..config.Topic_String , result, mqtt.QOS0)
+	if verbose(2) then print('Published:\n'.. result) end			
+	
+	
+
+end
+--]]
 --\functions section
 
 
@@ -127,7 +222,7 @@ if config.sim_data.Simulated==1 then
 	if verbose(1) then print("Start the simulation") end	
 	--Use socat for the serial simulation, remember the settings and record the pid, so socat can be stopped with the service
 	local tmpfile = config.sim_data.tmpfile
-	local pidfile = "/var/run/socat_output.Serial2MqttArduinoDs18b20.pid"
+	local pidfile = "/var/run/socat_output.SerialMqttArduinoDs18b20_Relays.pid"
 	--socat -d -d pty,raw,echo=0,b9600 pty,raw,echo=0,b9600
 	local serialPortDefinition="pty,raw,echo=0,b".. config.Serial.baudRate .. " "
 	local cmd = "sh -c 'socat -d -d "..serialPortDefinition..serialPortDefinition .."> " .. tmpfile .. " 2>&1 & echo $! > " .. pidfile .. "'"
@@ -165,7 +260,7 @@ if config.sim_data.Simulated==1 then
 	
 	
 	--local SimCmd = "/usr/bin/" .. "Serial2MqttArduinoDs18b20Simulator.lua "  .. pts2	
-	local SimCmd =brf.GetFullFilePathFromOpk('Serial2MqttArduinoDs18b20','Serial2MqttArduinoDs18b20Simulator') .. " ".. pts2
+	local SimCmd =brf.GetFullFilePathFromOpk('SerialMqttArduinoDs18b20_Relays','Serial2MqttArduinoDs18b20Simulator') .. " ".. pts2
 	
 	if verbose(2) then
 		print ("SimCmd: " .. SimCmd)
@@ -203,9 +298,11 @@ client:on({
 		if ack.rc == 0 then
 			clientConnected=true
 		end
-		--readnPublishTemperatures(client)	
+		--readnPublishTemperatures(client)
+		Set_n_GetRelays()
 		--define what we want to subscribe to		
-		client:subscribe('cmnd'.. config.Topic_String, mqtt.QOS0)	
+		client:subscribe('cmnd'.. config.Topic_String.."/#", mqtt.QOS0)
+		
 		if verbose(1) then print ("subscribed to: "..'cmnd'.. config.Topic_String) end
 	end,
 	
@@ -216,8 +313,27 @@ client:on({
 			print('Received message on topic:', pkt.topic) 
 			print('Payload:', pkt.payload) 
 		end
-		--return read and publish sensors		
-		readnPublishTemperatures(client,pkt.payload)
+		local prefix, device, subject = pkt.topic:match("([^/]+)/([^/]+)/([^/]+)")
+		local number = subject:match("%d+") or -1
+		if prefix=="cmnd" then			
+			local cmd = pkt.payload:match("on") or pkt.payload:match("off") or pkt.payload:match("1") or pkt.payload:match("0")
+			if cmd == "1" then
+				cmd ="on"
+			elseif cmd == "0" then
+				cmd ="off"
+			end
+			if verbose(5) then 
+				print("Prefix:", prefix)
+				print("Device:", device)
+				print("subject:", subject)
+				print("number:", number)
+				print("cmd:", cmd)
+			end
+			Set_n_GetRelays(number,cmd)
+		else
+			--return read and publish sensors		
+			readnPublishTemperatures(client,pkt.payload)
+		end		
 		--os.exit()
 		--print("food")
 	end,
