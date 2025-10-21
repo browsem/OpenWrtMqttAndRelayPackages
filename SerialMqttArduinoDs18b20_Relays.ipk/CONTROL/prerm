@@ -1,12 +1,12 @@
 #!/bin/sh
 
 # Stop and disable the service before files are removed
-/etc/init.d/Serial2MqttArduinoDs18b20 stop
-/etc/init.d/Serial2MqttArduinoDs18b20 disable
+/etc/init.d/SerialMqttArduinoDs18b20_Relays stop
+/etc/init.d/SerialMqttArduinoDs18b20_Relays disable
 
 
-CONFIG_PATH="/etc/Serial2MqttArduinoDs18b20.json"
-DEFAULT_CONFIG="/usr/share/Serial2MqttArduinoDs18b20/etc/Serial2MqttArduinoDs18b20.json"
+CONFIG_PATH="/etc/SerialMqttArduinoDs18b20_Relays.json"
+DEFAULT_CONFIG="/usr/share/SerialMqttArduinoDs18b20_Relays/etc/SerialMqttArduinoDs18b20_Relays.json"
 
 # Compare files using checksum
 if cmp -s "$CONFIG_PATH" "$DEFAULT_CONFIG"; then

@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Stop and disable the service before files are removed
+/etc/init.d/cRelaySimulator stop
+/etc/init.d/cRelaySimulator disable
+

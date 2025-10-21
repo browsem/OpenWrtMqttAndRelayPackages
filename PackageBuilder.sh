@@ -59,13 +59,13 @@ echo "finished building ${packagename} ipk"
 RootDir=$PWD
 for i in $(seq 1 5); do	
 	if [ "$i" -eq 1 ]; then	
-		packagename='cRelayMqttWrapperService'
+		packagename='cRelaySimulator'
 		version=0.8
 	elif [ "$i" -eq 2 ]; then	
 		packagename='lua-brfUtils'
 		version=0.8
 	elif [ "$i" -eq 3 ]; then	
-		packagename='Serial2MqttArduinoDs18b20'
+		packagename='SerialMqttArduinoDs18b20_Relays'
 		version=0.8	
 	elif [ "$i" -eq 4 ]; then	
 		packagename='TasmotaSimulator'

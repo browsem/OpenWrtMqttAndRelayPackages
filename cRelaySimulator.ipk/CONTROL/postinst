@@ -1,0 +1,11 @@
+#!/bin/sh
+
+
+# Only run after installation
+[ "$1" = "configure" ] || exit 0
+
+# Enable and start the service
+/etc/init.d/cRelaySimulator enable
+/etc/init.d/cRelaySimulator start
+
+exit 0

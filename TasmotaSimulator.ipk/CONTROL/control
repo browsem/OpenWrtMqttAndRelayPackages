@@ -1,8 +1,8 @@
 Package: TasmotaSimulator
 Version: 0.8
-Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson, cRelayMqttWrapperService
+Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson, cRelaySimulator
 Section: utils
 Priority: optional
 Architecture: all
 Maintainer: browsem 
-Description: Read serial data from arduino
+Description: Simulate an esp8266 on the wifi
