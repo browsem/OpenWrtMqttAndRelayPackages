@@ -25,52 +25,19 @@ rm -rf $TmpDir
 echo "finished building ${packagename} ipk"
 }
 
-notToBeUsed(){
-#!/bin/sh
-
-basedir='/opt/root/helloworld-package'
-#/home/user/Desktop/examples/helloworld-package'
-
-cd $basedir/
-mkdir tmp
-cd $basedir/control
-tar -czf ../tmp/control.tar.gz ./*
-
-cd $basedir/data
-tar -czf ../tmp/data.tar.gz ./*
-
-packagename="helloworld-package_3.0.arm_cortex-a9.ipk"
-
-cd $basedir
-
-cp debian-binary tmp
-cd tmp
-tar -czf ../../$packagename ./*
-
-# clean up
-cd ..
-rm -rf tmp
-
-echo "finished building ${packagename} ipk"
-
-}
-
 
 RootDir=$PWD
-for i in $(seq 1 5); do	
+for i in $(seq 1 4); do	
 	if [ "$i" -eq 1 ]; then	
-		packagename='cRelaySimulator'
-		version=0.8
-	elif [ "$i" -eq 2 ]; then	
 		packagename='lua-brfUtils'
 		version=0.8
-	elif [ "$i" -eq 3 ]; then	
+	elif [ "$i" -eq 2 ]; then	
 		packagename='SerialMqttArduinoDs18b20_Relays'
 		version=0.8	
-	elif [ "$i" -eq 4 ]; then	
+	elif [ "$i" -eq 3 ]; then	
 		packagename='TasmotaSimulator'
 		version=0.8	
-	elif [ "$i" -eq 5 ]; then	
+	elif [ "$i" -eq 4 ]; then	
 		packagename='BrfHeatControl'
 		version=0.8	
 	else

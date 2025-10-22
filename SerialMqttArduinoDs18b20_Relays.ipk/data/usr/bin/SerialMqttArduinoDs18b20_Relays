@@ -47,9 +47,8 @@ end
 	
 
 
-function SerialPort(PortPath)
-
-		if verbose(2) then print("Opening serial port: "..PortPath ) end
+function SerialPort(PortPath)		
+		if verbose(5) then print("Opening serial port: "..PortPath ) end
 		local f = file.open(PortPath)  -- open the selected return the raw file descriptor		
 		if not f then
 			print ("Serial port : "..PortPath .." not found" )			
@@ -115,105 +114,99 @@ function readnPublishTemperatures(client,Sensornum)
 	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
 	file.close(fd)
 	
-	client:publish('tele'..config.Topic_String , result, mqtt.QOS0)
+	client:publish('tele'..config.Topic_String .."/SENSOR" , result, mqtt.QOS0)
 	if verbose(2) then print('Published:\n'.. result) end			
 end
 
 
-function Set_n_GetRelays(RelayNumber,cmd)
+function Set_n_GetRelays(client,RelayNumber,cmd)
 	RelayNumber=tonumber(RelayNumber) or -1
 	cmd = cmd or "-1"
 	if RelayNumber==-1 then
-		for idx =1,config.sim_data.NrOfRelays, 1 do
+		for idx =1,config.NrOfRelays, 1 do
 			if verbose(5) then 
 				print('Recursive idx: ',idx) 
 				print('Recursive cmd: ',cmd) 
 			end	
-			Set_n_GetRelays(idx,cmd)
+			Set_n_GetRelay(client,idx,cmd)
 		end
 		if verbose(2) then print('Recursive done') end					
 	else
-		if RelayNumber>0 and RelayNumber<=config.sim_data.NrOfRelays then
-			local command = "R" .. RelayNumber .."_".. cmd .."\n"	
-			local fd= SerialPort(serialPortPath)
-			if verbose(2) then
-				print("File descriptor: ",fd)					
-				print('RelayNumber: ',RelayNumber) 
-				print('command: ',command) 
-				print()
-			end	
-			local ok, eco = file.writefile(serialPortPath, command)
-			--The data to the serial port
-			if not ok then
-				print("Failed to send command: "..command.. " Result: " , err) 
-			else
-			if verbose(2) then
-				print("Sent command: "..command.. " Result: " , err)
-			end
-	end
+		if RelayNumber>0 and RelayNumber<=config.NrOfRelays then
+			Set_n_GetRelay(client,RelayNumber,cmd)
 		end
 	end
 end
 	
-	
-	
-	
-	
-	
-	
---[[	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
+function Set_n_GetRelay(client,RelayNumber,cmd)
+	local command = "R" .. RelayNumber .."_".. cmd .."\n"	
+	local fd= SerialPort(serialPortPath)
+	if verbose(7) then
+		print("File descriptor: ",fd)					
+		print('RelayNumber: ',RelayNumber) 
+		print('command: ',command) 
+		print()
+	end	
+	local ok, eco = file.writefile(serialPortPath, command)
+	--The data to the serial port
+	if not ok then
+		print("Failed to send command: "..command.. " Result: " , err) 
+	else
+		if verbose(2) then
+			print("Sent command: "..command.. " Result: " , err)
+		end
+	end
 	
 	local b = bufio.new(fd)
 	-- Read a line (ends with \n)
 	--local line, err = b:readline()
 	--local line, err = b:read('l')
 	local timeout = 2
-	local result = brf.MqttHeader()
+	local result =""
 	local LineCount=0
+
 	while true do
 	--local line, err = b:read('L')		
-		local line, err = b:read('L',timeout)
+		local line, err = b:read('L',timeout)		
 		if line then						
 			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
 			LineCount=LineCount+1
 				
-			 if verbose(11) then print("Received line:", line) end
+			 if verbose(2) then print("Received line:", line) end
 		elseif err == "timeout" then
-			if verbose(5) then  print("All data read") end 
+			if verbose(2) then  print("All data read") end 
 			break  -- no more data within timeout
 		else
 			print("Read error:", err)
 			break
 		end
 	end
-	--remove the last comma
-	result= result:gsub(",%s*$", "\n}")
 	
-	if verbose(5) then print (result) end 
-	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
+	if verbose(2) then print (result) end 
+	print ("result: ".. result)
+	local key, value = result:match('"([^"]+)"%s*:%s*"([^"]+)"')
+	if key and value then
+		local TopicToWrite='stat'.. config.Topic_String .."/".. key
+		if verbose(1) then 
+			print("TopicToWrite: ".. TopicToWrite)   --> POWER
+			print("value: "..value) --> "OFF"
+		end
+		
+		if verbose(5) then print("Closing serial port: "..serialPortPath ) end		
+		client:publish(TopicToWrite, value, mqtt.QOS0)
+		if key=="1" then
+			--Write relay 1 to POWER as well as POWER1
+			local TopicToWrite='stat'.. config.Topic_String .."/".. POWER
+			client:publish(TopicToWrite, value, mqtt.QOS0)
+		end
+		if verbose(2) then print('Published:\n'.. result) end			
+		
+	end
 	file.close(fd)
-	
-	client:publish('tele'..config.Topic_String , result, mqtt.QOS0)
-	if verbose(2) then print('Published:\n'.. result) end			
-	
-	
-
-end
+		
 --]]
+end
+
 --\functions section
 
 
@@ -298,8 +291,9 @@ client:on({
 		if ack.rc == 0 then
 			clientConnected=true
 		end
-		--readnPublishTemperatures(client)
-		Set_n_GetRelays()
+		Set_n_GetRelays(client)
+		readnPublishTemperatures(client)				
+		
 		--define what we want to subscribe to		
 		client:subscribe('cmnd'.. config.Topic_String.."/#", mqtt.QOS0)
 		
@@ -322,14 +316,14 @@ client:on({
 			elseif cmd == "0" then
 				cmd ="off"
 			end
-			if verbose(5) then 
+			if verbose(7) then 
 				print("Prefix:", prefix)
 				print("Device:", device)
 				print("subject:", subject)
 				print("number:", number)
 				print("cmd:", cmd)
 			end
-			Set_n_GetRelays(number,cmd)
+			Set_n_GetRelays(client,number,cmd)
 		else
 			--return read and publish sensors		
 			readnPublishTemperatures(client,pkt.payload)
@@ -357,6 +351,7 @@ end,'eco1')
 eco.run(function(name)
 	if verbose(1) then print("Starting task eco2") end
 	while true do 		
+		Set_n_GetRelays(client)
 		readnPublishTemperatures(client)				
 		time.sleep(config.PollTime)
 	end

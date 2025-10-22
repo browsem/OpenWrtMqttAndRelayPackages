@@ -1,6 +1,6 @@
 Package: TasmotaSimulator
 Version: 0.8
-Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson, cRelaySimulator
+Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson
 Section: utils
 Priority: optional
 Architecture: all

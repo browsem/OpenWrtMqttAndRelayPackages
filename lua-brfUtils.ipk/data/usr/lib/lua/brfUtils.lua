@@ -13,6 +13,7 @@ Load_config
 MqttHeader
 ReadFile
 PrintTable
+SetSimulatedRelayState
 Sleep
 TblCount
 Timestamp
@@ -135,6 +136,34 @@ function M.PrintTable(tbl)
     end	
 end
 
+function M.SetSimulatedRelayState(ReLayStateArr, cmdLine,serialPortPathIn,verboseFct)
+
+	local RelayNum, Cmnd = cmdLine:match("([^_]+)_([^_]+)")
+	RelayNum=tonumber(RelayNum)
+
+	if Cmnd=="on" then
+		ReLayStateArr[RelayNum]="ON"
+	elseif Cmnd=="off" then
+		ReLayStateArr[RelayNum]="OFF"
+	end	
+	
+	if verboseFct(1) then 
+		print("RelayNum: ",RelayNum)
+		print("Cmnd: ",Cmnd) 					
+		print("ReLayStateArr[" .. RelayNum .. "]: " .. ReLayStateArr[RelayNum])
+	end
+	if not serialPortPathIn then
+		local serielAnsw='"POWER'
+				.. RelayNum
+				.. '": "'
+				.. ReLayStateArr[RelayNum]			
+				.. '"\n'	
+
+		M.WriteToSerial(serialPortPathIn, serielAnsw,verboseFct)			
+	end
+end
+
+
 function M.Sleep(seconds)
   local start = os.clock()
   while os.clock() - start < seconds do end
@@ -166,4 +195,21 @@ function M.WaitForEnterKey(WaitTxt,ContinueTxt)
 	print(ContinueTxt)
 end
 
+function M.WriteToSerial(serialPortPathIn, serielAnswIn,verboseFct)			
+	if verboseFct(2) then print("serielAnsw: "..serielAnswIn) end
+	
+	--open the port for write				
+	VirtualSerialPort, err = io.open(serialPortPathIn, "w")
+	if not VirtualSerialPort then
+		print("Error opening "..serialPortPathIn.. ":", err)
+		return
+	end
+	VirtualSerialPort:write(serielAnswIn)	
+	
+	VirtualSerialPort:close()
+end
+
+
 return M
+
+

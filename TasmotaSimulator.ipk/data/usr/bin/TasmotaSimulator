@@ -13,14 +13,13 @@ local brf =  require 'brfUtils'
 --Read config data from config file
 local config = brf.Load_config("/etc/TasmotaSimulator.json")
 
-
 --INTERNAL "GLOBAL" VARAIABLES SECTION
 
 local temp={} --temperature array
 local sensorId={}
-local relayPath = ""		
+	
 local startTime = os.time()
-
+local GblRelayState = {"OFF", "OFF"}
 
 --\INTERNAL "GLOBAL" VARAIABLES SECTION
 
@@ -51,8 +50,10 @@ local function randomFix(tempin)
 end				
 
 
-local function readnPublishRelayStates(client,RelayNum)	
 
+
+
+--[[
 	
 	local cmd = 'sh ' .. relayPath .. " -i"
 	if verbose(5) then print('cmd: '.. cmd) end
@@ -98,17 +99,39 @@ local function readnPublishRelayStates(client,RelayNum)
 	
 	-- Convert to JSON
 	--local result = json.encode({Relays = relays}, {indent = true})
-	local payload = relays
-	local publishPath ='stat'..config.Topic_String .."/POWER"
-	client:publish(publishPath, payload, mqtt.QOS0)
+	
+--]]
+local function readnPublishSingeRelayState(client,RelayNum)
+
+	local payload = GblRelayState[RelayNum]
+	local publishPath ='stat'..config.Topic_String .."/POWER" .. RelayNum	
+	client:publish(publishPath, payload, mqtt.QOS0)	
 	if verbose(2) then 
 		print ('Published:\n'.. payload)	
-		print ('To '.. publishPath ..'\n')
+		print ('To '.. publishPath ..'\n')		
 	end		
-
+	if RelayNum==1 then
+		publishPath ='stat'..config.Topic_String .."/POWER"
+		client:publish(publishPath, payload, mqtt.QOS0)	
+		if verbose(2) then 
+			print ('Published:\n'.. payload)	
+			print ('To '.. publishPath ..'\n')		
+		end		
+	end
+	
 	
 	--print(result)
 
+end
+
+local function readnPublishRelayStates(client,RelayNum)		
+    if not RelayNum then	
+		for RelayNum=1 ,config.NumberOfRelays,1 do							
+			readnPublishSingeRelayState(client,RelayNum)		
+		end
+	elseif 0<RelayNum and RelayNum<=onfig.NumberOfRelays then		
+		readnPublishSingeRelayState(client,RelayNum)
+	end
 end
 
 local function Sensors(client)
@@ -173,17 +196,14 @@ local function publishAll(client)
 	Sensors(client)	
 end
 
+
 local function SetReylay(number,payload)
-	local cmd = payload:match("on") or payload:match("off")
-	local shCmd="sh " ..relayPath  .. " ".. number .. " " .. cmd 
+	local cmd = payload:match("ON") or payload:match("OFF")
+	GblRelayState[number]=cmd
 	if verbose(5) then
-		print (number)
-		print ("shCmd :" .. shCmd)
-	end
-	if cmd then
-		local handle = io.popen(shCmd)		
-	
-	end
+		print ("number: " .. number)
+		print ("GblRelayState[" .. number .."]",GblRelayState[number])
+	end	
 end
 
 --\functions section
@@ -192,10 +212,13 @@ end
 
 --Set the sensorID
 sensorId=brf.DS18B20ID(config.NumberOfSensors,config.RandomSensorIdSeed)
---Get path to cRelay.sh
-relayPath = brf.GetFullFilePathFromOpk('cRelaySimulator','cRelaySimulator.sh')
---add local file vars
-relayPath = relayPath .." -n "..  config.NumberOfRelays .." -f ".. config.STATE_FILE 
+
+
+--Make sure we have enough relays
+for Ridx=0 ,config.NumberOfRelays,1 do
+	GblRelayState[Ridx] = "OFF"
+end
+
 
 -- Create MQTT client
 local client = mqtt.new({
@@ -234,10 +257,10 @@ client:on({
 			number = 1
 		end
 		local cmd = pkt.payload:match("on") or pkt.payload:match("off") or pkt.payload:match("1") or pkt.payload:match("0")
-		if cmd == "1" then
-			cmd ="on"
-		elseif cmd == "0" then
-			cmd ="off"
+		if cmd == "1" or  cmd == "on" then
+			cmd ="ON"
+		elseif cmd == "0" or cmd == "off"  then
+			cmd ="OFF"
 		end
 		if verbose(5) then 
 			print("Prefix:", prefix)

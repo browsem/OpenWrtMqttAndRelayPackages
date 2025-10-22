@@ -1,6 +1,6 @@
 Package: SerialMqttArduinoDs18b20_Relays
 Version: 0.8
-Depends: socat, cRelaySimulator, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson,
+Depends: socat, lua, lua-eco, lua-eco-mqtt, lua-eco-termios, lua-brfUtils, dkjson
 Section: utils
 Priority: optional
 Architecture: all
