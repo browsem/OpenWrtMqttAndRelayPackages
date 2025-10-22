@@ -13,7 +13,6 @@ Load_config
 MqttHeader
 ReadFile
 PrintTable
-SetSimulatedRelayState
 Sleep
 TblCount
 Timestamp
@@ -136,32 +135,6 @@ function M.PrintTable(tbl)
     end	
 end
 
-function M.SetSimulatedRelayState(ReLayStateArr, cmdLine,serialPortPathIn,verboseFct)
-
-	local RelayNum, Cmnd = cmdLine:match("([^_]+)_([^_]+)")
-	RelayNum=tonumber(RelayNum)
-
-	if Cmnd=="on" then
-		ReLayStateArr[RelayNum]="ON"
-	elseif Cmnd=="off" then
-		ReLayStateArr[RelayNum]="OFF"
-	end	
-	
-	if verboseFct(1) then 
-		print("RelayNum: ",RelayNum)
-		print("Cmnd: ",Cmnd) 					
-		print("ReLayStateArr[" .. RelayNum .. "]: " .. ReLayStateArr[RelayNum])
-	end
-	if not serialPortPathIn then
-		local serielAnsw='"POWER'
-				.. RelayNum
-				.. '": "'
-				.. ReLayStateArr[RelayNum]			
-				.. '"\n'	
-
-		M.WriteToSerial(serialPortPathIn, serielAnsw,verboseFct)			
-	end
-end
 
 
 function M.Sleep(seconds)
