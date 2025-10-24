@@ -1,6 +1,6 @@
 Package: lua-brfUtils
 Version: 0.8
-Depends: lua
+Depends: lua, lsof
 Section: utils
 Priority: optional
 Architecture: all

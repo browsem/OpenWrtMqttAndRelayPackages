@@ -6,12 +6,9 @@ local termios = require 'eco.termios'
 local file = require 'eco.file'
 local bufio = require 'eco.bufio'
 
-
--- adding to path
 -- adding to path
 package.path = package.path ..";/usr/lib/lua/?.lua"
 local brf =  require 'brfUtils'
-
 
 --Read config data from config file
 local config = brf.Load_config("/etc/SerialMqttArduinoDs18b20_Relays.json")
@@ -20,7 +17,8 @@ local config = brf.Load_config("/etc/SerialMqttArduinoDs18b20_Relays.json")
 --INTERNAL "GLOBAL" VARAIABLES SECTION
 
 
-
+local fd
+local fCount=0
 local serialPortPath=""
 local pts1 
 local pts2
@@ -47,75 +45,90 @@ end
 	
 
 
-function SerialPort(PortPath)		
-		if verbose(5) then print("Opening serial port: "..PortPath ) end
-		local f = file.open(PortPath)  -- open the selected return the raw file descriptor		
-		if not f then
-			print ("Serial port : "..PortPath .." not found" )			
+function SerialPort(PortPath,Port)		
+	
+		if not Port then
+			print ("fCount: ", fCount)
+			if verbose(5) then print("Opening serial port: "..PortPath ) end		
+			f = file.open(PortPath)  -- open the selected return the raw file descriptor		
+			print ("f:",f)
+			if not f then
+				print ("Serial port : "..PortPath .." not found" )			
+			else
+				local attr, err = termios.tcgetattr(f) --get the settings from the serial port		
+				if err then
+					print ("err: " ..err)
+					cleanup()
+					return nil
+				end
+				local nattr = attr:clone() --make a copy of the settings 
+				nattr:clr_flag('l', termios.ECHO)  -- Disable echo
+				nattr:set_speed(setTermiosSpeedFromVal(config.Serial.baudRate))  -- Set baud rate
+				--Set the new connection data
+				termios.tcsetattr(f, termios.TCSANOW, nattr)		
+				if verbose(2) then print ("Serial port : "..PortPath .." open" ) end
+				return f
+			end
 		else
-			local attr, err = termios.tcgetattr(f) --get the settings from the serial port
-			local nattr = attr:clone() --make a copy of the settings 
-			nattr:clr_flag('l', termios.ECHO)  -- Disable echo
-			nattr:set_speed(setTermiosSpeedFromVal(config.Serial.baudRate))  -- Set baud rate
-			--Set the new connection data
-			termios.tcsetattr(f, termios.TCSANOW, nattr)		
-			if verbose(2) then print ("Serial port : "..PortPath .." open" ) end
-		end
-		return f
-
+			if verbose(5) then print("Serial port: "..PortPath .." already open" ) end		
+			return Port
+		end		
+	
 end
 
 function readnPublishTemperatures(client,Sensornum)
 	Sensornum = tonumber(Sensornum) or -1 -- -1 = all
 	local command = "S" .. Sensornum .. "\n"
-	
-	local fd= SerialPort(serialPortPath)
-	if verbose(3) then
-		print("File descriptor: ",fd)	
-		print("Command to send : "..command)
-	end
-	local ok, eco = file.writefile(serialPortPath, command)
-	--Send a request for data
-	if not ok then
-		print("Failed to send command: "..command.. " Result: " , err) 
-	else
-		if verbose(2) then
-			print("Sent command: "..command.. " Result: " , err)
+		
+	fd= SerialPort(serialPortPath,fd)
+	if fd then
+		if verbose(3) then
+			print("File descriptor: ",fd)	
+			print("Command to send : "..command)
 		end
-	end
-	
-	local b = bufio.new(fd)
-	-- Read a line (ends with \n)
-	--local line, err = b:readline()
-	--local line, err = b:read('l')
-	local timeout = 2
-	local result = brf.MqttHeader()
-	local LineCount=0
-	while true do
-	--local line, err = b:read('L')		
-		local line, err = b:read('L',timeout)
-		if line then						
-			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
-			LineCount=LineCount+1
-				
-			 if verbose(11) then print("Received line:", line) end
-		elseif err == "timeout" then
-			if verbose(5) then  print("All data read") end 
-			break  -- no more data within timeout
+		local ok, eco = file.writefile(serialPortPath, command)
+		--Send a request for data
+		if not ok then
+			print("Failed to send command: "..command.. " Result1: " , err) 
 		else
-			print("Read error:", err)
-			break
+			if verbose(2) then
+				print("Sent command: "..command.. " Result2: " , err)
+			end
 		end
-	end
-	--remove the last comma
-	result= result:gsub(",%s*$", "\n}")
-	
-	if verbose(5) then print (result) end 
-	if verbose(2) then print("Closing serial port: "..serialPortPath ) end
-	file.close(fd)
-	
-	client:publish('tele'..config.Topic_String .."/SENSOR" , result, mqtt.QOS0)
-	if verbose(2) then print('Published:\n'.. result) end			
+		
+		local b = bufio.new(fd)
+		-- Read a line (ends with \n)
+		--local line, err = b:readline()
+		--local line, err = b:read('l')
+		local timeout = 2
+		local result = brf.MqttHeader()
+		local LineCount=0
+		while true do
+		--local line, err = b:read('L')		
+			local line, err = b:read('L',timeout)
+			if line then						
+				result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
+				LineCount=LineCount+1
+					
+				 if verbose(11) then print("Received line:", line) end
+			elseif err == "timeout" then
+				if verbose(5) then  print("All data read") end 
+				break  -- no more data within timeout
+			else
+				print("Read error:", err)
+				break
+			end
+		end
+		--remove the last comma
+		result= result:gsub(",%s*$", "\n}")
+		
+		if verbose(5) then print (result) end 
+		if verbose(2) then print("Closing serial port: "..serialPortPath ) end
+		--file.close(fd)
+		
+		client:publish('tele'..config.Topic_String .."/SENSOR" , result, mqtt.QOS0)
+		if verbose(2) then print('Published:\n'.. result) end	
+	end	
 end
 
 
@@ -139,72 +152,85 @@ function Set_n_GetRelays(client,RelayNumber,cmd)
 end
 	
 function Set_n_GetRelay(client,RelayNumber,cmd)
-	local command = "R" .. RelayNumber .."_".. cmd .."\n"	
-	local fd= SerialPort(serialPortPath)
-	if verbose(7) then
-		print("File descriptor: ",fd)					
-		print('RelayNumber: ',RelayNumber) 
-		print('command: ',command) 
-		print()
-	end	
-	local ok, eco = file.writefile(serialPortPath, command)
-	--The data to the serial port
-	if not ok then
-		print("Failed to send command: "..command.. " Result: " , err) 
-	else
-		if verbose(2) then
-			print("Sent command: "..command.. " Result: " , err)
-		end
-	end
+	local command = "R" .. RelayNumber .."_".. cmd .."\n"
 	
-	local b = bufio.new(fd)
-	-- Read a line (ends with \n)
-	--local line, err = b:readline()
-	--local line, err = b:read('l')
-	local timeout = 2
-	local result =""
-	local LineCount=0
-
-	while true do
-	--local line, err = b:read('L')		
-		local line, err = b:read('L',timeout)		
-		if line then						
-			result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
-			LineCount=LineCount+1
-				
-			 if verbose(2) then print("Received line:", line) end
-		elseif err == "timeout" then
-			if verbose(2) then  print("All data read") end 
-			break  -- no more data within timeout
+	fd= SerialPort(serialPortPath,fd)
+	if fd then
+	
+		if verbose(7) then
+			print("File descriptor: ",fd)					
+			print('RelayNumber: ',RelayNumber) 
+			print('command: ',command) 
+			print()
+		end	
+		local ok, eco = file.writefile(serialPortPath, command)
+		--The data to the serial port
+		if not ok then
+			print("Failed to send command: "..command.. " Result3: " , err) 
 		else
-			print("Read error:", err)
-			break
-		end
-	end
-	
-	if verbose(2) then print (result) end 
-	print ("result: ".. result)
-	local key, value = result:match('"([^"]+)"%s*:%s*"([^"]+)"')
-	if key and value then
-		local TopicToWrite='stat'.. config.Topic_String .."/".. key
-		if verbose(1) then 
-			print("TopicToWrite: ".. TopicToWrite)   --> POWER
-			print("value: "..value) --> "OFF"
+			if verbose(2) then
+				print("Sent command: "..command.. " Result4: " , err)
+			end
+		end	
+		local b = bufio.new(fd)
+		-- Read a line (ends with \n)
+		--local line, err = b:readline()
+		--local line, err = b:read('l')
+		local timeout = 2
+		local result =""
+		local LineCount=0
+		while true do
+		--local line, err = b:read('L')		
+					
+			local line, err = b:read('L',timeout)		
+			if line then	
+				result = result ..brf.Indent(2) .. line:gsub("\n", ",\n")
+				LineCount=LineCount+1
+				 if verbose(2) then print("Received line:", line) end
+			elseif err == "timeout" then
+				if verbose(2) then  print("All data read") end 
+				break  -- no more data within timeout
+			else
+				print("Read error:", err)
+				if fd then
+					cleanup()
+				end
+				break
+			end
 		end
 		
-		if verbose(5) then print("Closing serial port: "..serialPortPath ) end		
-		client:publish(TopicToWrite, value, mqtt.QOS0)
-		if key=="1" then
-			--Write relay 1 to POWER as well as POWER1
-			local TopicToWrite='stat'.. config.Topic_String .."/".. POWER
+		if verbose(2) then print (result) end 
+		print ("result: ".. result)
+		local key, value = result:match('"([^"]+)"%s*:%s*"([^"]+)"')
+		if key and value then
+			local TopicToWrite='stat'.. config.Topic_String .."/".. key
+			if verbose(1) then 
+				print("TopicToWrite: ".. TopicToWrite)   --> POWER
+				print("value: "..value) --> "OFF"
+			end
+			
+			if verbose(5) then print("Closing serial port: "..serialPortPath ) end		
 			client:publish(TopicToWrite, value, mqtt.QOS0)
+			if key=="1" then
+				--Write relay 1 to POWER as well as POWER1
+				local TopicToWrite='stat'.. config.Topic_String .."/".. POWER
+				client:publish(TopicToWrite, value, mqtt.QOS0)
+			end
+			if verbose(2) then print('Published:\n'.. result) end			
+			
 		end
-		if verbose(2) then print('Published:\n'.. result) end			
-		
+		--file.close(fd)
 	end
-	file.close(fd)
-		
 --]]
+end
+
+function cleanup()
+  print ("Cleaning up")
+  if fd then
+    file.close(fd)
+    print("Serial port ".. serialPortPath .." closed.")	
+  end
+  fd=nil
 end
 
 --\functions section
@@ -261,11 +287,11 @@ if config.sim_data.Simulated==1 then
 	os.execute(SimCmd .." &")				
 else 
 	if verbose(1) then
-		print("using serial port from ".. config.Serial_port)
+		print("using serial port from ".. config.Serial.port)
 	end
 	pts1=0
 	pts2=0
-	serialPortPath=config.Serial_port	
+	serialPortPath=config.Serial.port	
 	if verbose(1) then		
 		print ("starting serialport ".. serialPortPath)		
 	end
@@ -358,6 +384,15 @@ eco.run(function(name)
 end,'eco2')
 
 
+
+
+--Handling of program shutdown
+--[[
+signal.signal(signal.SIGINT, function()
+  cleanup()
+  os.exit(0)  -- Exit gracefully
+end)
+]]--
 
 --[[
 mqtt Topics 

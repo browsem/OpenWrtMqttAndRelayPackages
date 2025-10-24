@@ -6,9 +6,9 @@ USE_PROCD=1
 SOCAT_PIDFILE=/var/run/socat_output.SerialMqttArduinoDs18b20_Relays.pid
 
 stopsocat()
-{
-	echo "Stopping socat..."
+{	
     if [ -f "$SOCAT_PIDFILE" ]; then
+		echo "Stopping socat..."
         kill "$(cat $SOCAT_PIDFILE)" 2>/dev/null
         rm -f "$SOCAT_PIDFILE"
    # else

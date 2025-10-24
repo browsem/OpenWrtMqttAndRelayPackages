@@ -277,10 +277,10 @@ while (not done) do
 	
 end	
 
---we have now found all pendencies, and made a nice little tree.
+--we have now found all dependencies, and made a nice little tree.
 if verbose then
 	print ()
-	print ("we have now found all pendencies, and made a nice little tree.")
+	print ("we have now found all dependencies, and made a nice little tree.")
 	
 end
 for idx = 1,maxlevel do

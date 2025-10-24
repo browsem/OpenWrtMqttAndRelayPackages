@@ -5,11 +5,13 @@ Functions included
 AddToTableByIdx
 DS18B20ID
 ExecuteToPID
+GetCurrentProcessPID
 GetFullFilePathFromOpk
 FileExist
 FuncOnTable
 Indent
 Load_config
+lsof
 MqttHeader
 ReadFile
 PrintTable
@@ -77,6 +79,15 @@ function M.FileExist(path)
   end
 end
 
+function M.GetCurrentProcessPID(OptPidFileNameToSaveInTmp)
+	local handle = io.popen("echo $PPID")	
+	local pid = handle:read("*a")
+	if OptPidFileToSave then	
+		local file = io.open("/tmp/..OptPidFileNameToSaveInTmp", "w")
+	end
+	return pid
+end
+
 function M.GetFullFilePathFromOpk(Packagename,Filename)
 	
 	local cmd = 'opkg files '.. Packagename ..' | grep '.. Filename
@@ -109,6 +120,13 @@ function M.Load_config(path)
     end
     return config
 end	
+
+function M.lsof(FileToCheck)
+	local handle = io.popen("lsof " .. FileToCheck)	
+	local Result = handle:read("*a")
+	
+	return Result
+end
 
 
 function M.MqttHeader()
